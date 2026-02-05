@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, FlatList, Image, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, FlatList, Image, ActivityIndicator, StyleSheet, TouchableOpacity, RefreshControl, Alert } from 'react-native';
 import { Title, Subheading, Card, Avatar, IconButton } from 'react-native-paper';
-import { useFocusEffect } from '@react-navigation/native';
-import Header from '../components/Header';
-import { useNavigation } from '@react-navigation/native';
-import SimplePlayer from '../components/SimplePlayer';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { MaterialIcons } from '@expo/vector-icons';
+// Header is provided by react-navigation AppBar now
+import MiniPlayer from '../components/MiniPlayer';
 import HorizontalScroller from '../components/HorizontalScroller';
-import SongItem from '../components/SongItem';
+import MusicCard from '../components/MusicCard';
+import { usePlayer } from '../contexts/PlayerContext';
 import { saavnApi } from '../services/saavnApi';
 import { getMeta } from '../services/storageCompat';
 import { decodeHtmlEntities, getBestImage } from '../utils/normalize';
@@ -16,9 +17,14 @@ const pickImage = (img: any) => getBestImage(img);
 
 export default function Home() {
   const nav = useNavigation();
+  const { currentSong, isPlaying, playSong, pauseSong, nextSong, previousSong, open } = usePlayer();
   const [loading, setLoading] = useState(true);
-  const [albums, setAlbums] = useState<any[]>([]);
-  const [charts, setCharts] = useState<any[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [newAlbums, setNewAlbums] = useState<any[]>([]);
+  const [trendingSongs, setTrendingSongs] = useState<any[]>([]);
+  const [topCharts, setTopCharts] = useState<any[]>([]);
+  const [trendingPlaylists, setTrendingPlaylists] = useState<any[]>([]);
+  const [recommendedArtists, setRecommendedArtists] = useState<any[]>([]);
   const [launchPayload, setLaunchPayload] = useState<any | null>(null);
 
   useEffect(() => {
@@ -27,26 +33,68 @@ export default function Home() {
       try {
         console.log('[Home] Loading cached launch...');
         const cached = await getMeta('launch');
-        console.log('[Home] Cached launch:', cached ? Object.keys(cached) : 'null');
         if (cached) {
           setLaunchPayload(cached);
-          const launchData = cached?.data || cached;
-          console.log('[Home] launchData keys:', Object.keys(launchData));
-          const albumsSource = Array.isArray(launchData?.new_albums) ? launchData.new_albums : [];
-          const chartsSource = Array.isArray(launchData?.top_charts) ? launchData.top_charts : (Array.isArray(launchData?.top_songs) ? launchData.top_songs : []);
-          console.log('[Home] Albums source length:', albumsSource.length, 'charts length:', chartsSource.length);
-          setAlbums(albumsSource.map((a: any) => ({ 
-            id: a.id || a.sid || Math.random().toString(), 
-            title: decodeHtmlEntities(a.title || a.name || ''), 
-            artist: a.subtitle || a.music || a.artist_name || (a.more_info?.artistMap?.artists?.[0]?.name) || '',
-            image: pickImage(a.image || a.images || a.imageUrl) 
-          })));
-          setCharts(chartsSource.map((c: any) => ({ 
-            id: c.id || c.songId || c.sid || Math.random().toString(), 
-            title: decodeHtmlEntities(c.title || c.name || c.song || c.trackName || ''), 
-            subtitle: c.subtitle || c.header_desc || c.description || '',
-            image: pickImage(c.image || c.images || c.thumbnail || c.cover) 
-          })));
+          const data = cached?.data || cached;
+          
+          // Parse new_albums
+          if (Array.isArray(data?.new_albums)) {
+            setNewAlbums(data.new_albums.slice(0, 10).map((a: any) => ({ 
+              id: a.id || Math.random().toString(), 
+              title: decodeHtmlEntities(a.title || ''), 
+              artist: a.subtitle || '',
+              image: pickImage(a.image),
+              type: a.type,
+              perma_url: a.perma_url
+            })));
+          }
+          
+          // Parse new_trending (trending songs)
+          if (Array.isArray(data?.new_trending)) {
+            setTrendingSongs(data.new_trending.slice(0, 10).map((s: any) => ({ 
+              id: s.id || Math.random().toString(), 
+              title: decodeHtmlEntities(s.title || ''), 
+              subtitle: s.subtitle || '',
+              image: pickImage(s.image),
+              type: s.type,
+              perma_url: s.perma_url
+            })));
+          }
+          
+          // Parse charts
+          if (Array.isArray(data?.charts)) {
+            setTopCharts(data.charts.slice(0, 10).map((c: any) => ({ 
+              id: c.id || Math.random().toString(), 
+              title: decodeHtmlEntities(c.title || ''), 
+              subtitle: c.subtitle || '',
+              image: pickImage(c.image),
+              type: c.type,
+              perma_url: c.perma_url
+            })));
+          }
+
+          // Parse trending playlists
+          if (Array.isArray(data?.top_playlists)) {
+            setTrendingPlaylists(data.top_playlists.slice(0, 10).map((p: any) => ({
+              id: p.id || Math.random().toString(),
+              title: decodeHtmlEntities(p.title || ''),
+              subtitle: p.subtitle || `${p.song_count || 0} songs`,
+              image: pickImage(p.image),
+              type: p.type,
+              perma_url: p.perma_url
+            })));
+          }
+
+          // Parse recommended artists
+          if (Array.isArray(data?.artist_recos)) {
+            setRecommendedArtists(data.artist_recos.slice(0, 6).map((a: any) => ({
+              id: a.id || Math.random().toString(),
+              name: decodeHtmlEntities(a.name || a.title || ''),
+              image: pickImage(a.image),
+              type: a.type,
+              perma_url: a.perma_url
+            })));
+          }
         }
       } catch (e) {
         console.error('[Home] Failed to load cached launch:', e);
@@ -56,33 +104,75 @@ export default function Home() {
     (async () => {
       try {
         setLoading(true);
-        // load cached payload quickly
         await loadCachedLaunch();
 
-        // Fetch fresh launch payload
         try {
           console.log('[Home] Calling saavnApi.launch()...');
           const payload = (await saavnApi.launch()) as any;
-          console.log('[Home] Launch API returned:', payload ? Object.keys(payload) : 'null');
+          console.log('[Home] Launch API returned:', payload ? 'success' : 'null');
           if (!mounted) return;
           if (payload) {
-            setLaunchPayload(payload || null);
-            const launchData = payload?.data || payload;
-            const albumsSource = Array.isArray(launchData?.new_albums) ? launchData.new_albums : [];
-            const chartsSource = Array.isArray(launchData?.top_charts) ? launchData.top_charts : (Array.isArray(launchData?.top_songs) ? launchData.top_songs : []);
-            console.log('[Home] Fresh albums length:', albumsSource.length, 'charts length:', chartsSource.length);
-            setAlbums(albumsSource.map((a: any) => ({ 
-              id: a.id || a.sid || Math.random().toString(), 
-              title: decodeHtmlEntities(a.title || a.name || ''), 
-              artist: a.subtitle || a.music || a.artist_name || (a.more_info?.artistMap?.artists?.[0]?.name) || '',
-              image: pickImage(a.image || a.images || a.imageUrl) 
-            })));
-            setCharts(chartsSource.map((c: any) => ({ 
-              id: c.id || c.songId || c.sid || Math.random().toString(), 
-              title: decodeHtmlEntities(c.title || c.name || c.song || c.trackName || ''), 
-              subtitle: c.subtitle || c.header_desc || c.description || '',
-              image: pickImage(c.image || c.images || c.thumbnail || c.cover) 
-            })));
+            setLaunchPayload(payload);
+            const data = (payload as any)?.data || payload;
+            
+            // Parse new_albums
+            if (Array.isArray(data?.new_albums)) {
+              setNewAlbums(data.new_albums.slice(0, 10).map((a: any) => ({ 
+                id: a.id || Math.random().toString(), 
+                title: decodeHtmlEntities(a.title || ''), 
+                artist: a.subtitle || '',
+                image: pickImage(a.image),
+                type: a.type,
+                perma_url: a.perma_url
+              })));
+            }
+            
+            // Parse new_trending
+            if (Array.isArray(data?.new_trending)) {
+              setTrendingSongs(data.new_trending.slice(0, 10).map((s: any) => ({ 
+                id: s.id || Math.random().toString(), 
+                title: decodeHtmlEntities(s.title || ''), 
+                subtitle: s.subtitle || '',
+                image: pickImage(s.image),
+                type: s.type,
+                perma_url: s.perma_url
+              })));
+            }
+            
+            // Parse charts
+            if (Array.isArray(data?.charts)) {
+              setTopCharts(data.charts.slice(0, 10).map((c: any) => ({ 
+                id: c.id || Math.random().toString(), 
+                title: decodeHtmlEntities(c.title || ''), 
+                subtitle: c.subtitle || '',
+                image: pickImage(c.image),
+                type: c.type,
+                perma_url: c.perma_url
+              })));
+            }
+
+            // Parse trending playlists
+            if (Array.isArray(data?.top_playlists)) {
+              setTrendingPlaylists(data.top_playlists.slice(0, 10).map((p: any) => ({
+                id: p.id || Math.random().toString(),
+                title: decodeHtmlEntities(p.title || ''),
+                subtitle: p.subtitle || `${p.song_count || 0} songs`,
+                image: pickImage(p.image),
+                type: p.type,
+                perma_url: p.perma_url
+              })));
+            }
+
+            // Parse recommended artists
+            if (Array.isArray(data?.artist_recos)) {
+              setRecommendedArtists(data.artist_recos.slice(0, 6).map((a: any) => ({
+                id: a.id || Math.random().toString(),
+                name: decodeHtmlEntities(a.name || a.title || ''),
+                image: pickImage(a.image),
+                type: a.type,
+                perma_url: a.perma_url
+              })));
+            }
           }
         } catch (err) {
           console.error('[Home] Launch fetch failed', err);
@@ -95,53 +185,316 @@ export default function Home() {
     return () => { mounted = false; };
   }, []);
 
-  // reload cache when screen gains focus
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      (async () => {
-        try {
-          const cached = await getMeta('launch');
-          if (cached && active) {
-            setLaunchPayload(cached);
-            const launchData = cached?.data || cached;
-            const albumsSource = Array.isArray(launchData?.new_albums) ? launchData.new_albums : [];
-            setAlbums(albumsSource.map((a: any) => ({ 
-              id: a.id || a.sid || Math.random().toString(), 
-              title: decodeHtmlEntities(a.title || a.name || ''), 
-              artist: a.subtitle || a.music || a.artist_name || (a.more_info?.artistMap?.artists?.[0]?.name) || '',
-              image: pickImage(a.image || a.images || a.imageUrl) 
-            })));
+  // Pull to refresh
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const payload = await saavnApi.launch();
+      if (payload) {
+        setLaunchPayload(payload);
+        const data = (payload as any)?.data || payload;
+        
+        // Update all data arrays
+        if (Array.isArray(data?.new_albums)) {
+          setNewAlbums(data.new_albums.slice(0, 10).map((a: any) => ({ 
+            id: a.id || Math.random().toString(), 
+            title: decodeHtmlEntities(a.title || ''), 
+            artist: a.subtitle || '',
+            image: pickImage(a.image),
+            type: a.type,
+            perma_url: a.perma_url
+          })));
+        }
+        
+        if (Array.isArray(data?.new_trending)) {
+          setTrendingSongs(data.new_trending.slice(0, 10).map((s: any) => ({ 
+            id: s.id || Math.random().toString(), 
+            title: decodeHtmlEntities(s.title || ''), 
+            subtitle: s.subtitle || '',
+            image: pickImage(s.image),
+            type: s.type,
+            perma_url: s.perma_url
+          })));
+        }
+        
+        if (Array.isArray(data?.charts)) {
+          setTopCharts(data.charts.slice(0, 10).map((c: any) => ({ 
+            id: c.id || Math.random().toString(), 
+            title: decodeHtmlEntities(c.title || ''), 
+            subtitle: c.subtitle || '',
+            image: pickImage(c.image),
+            type: c.type,
+            perma_url: c.perma_url
+          })));
+        }
+
+        if (Array.isArray(data?.top_playlists)) {
+          setTrendingPlaylists(data.top_playlists.slice(0, 10).map((p: any) => ({
+            id: p.id || Math.random().toString(),
+            title: decodeHtmlEntities(p.title || ''),
+            subtitle: p.subtitle || `${p.song_count || 0} songs`,
+            image: pickImage(p.image),
+            type: p.type,
+            perma_url: p.perma_url
+          })));
+        }
+
+        if (Array.isArray(data?.artist_recos)) {
+          setRecommendedArtists(data.artist_recos.slice(0, 6).map((a: any) => ({
+            id: a.id || Math.random().toString(),
+            name: decodeHtmlEntities(a.name || a.title || ''),
+            image: pickImage(a.image),
+            type: a.type,
+            perma_url: a.perma_url
+          })));
+        }
+      }
+    } catch (error) {
+      console.error('[Home] Refresh failed:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
+  // Navigation handlers
+  const handleItemPress = useCallback((item: any, type: string) => {
+    // Navigate to appropriate screen based on type
+    (async () => {
+      try {
+        if (type === 'album') {
+          // open album screen (AlbumScreen will fetch its tracks)
+          (nav as any).navigate('Album', { album: item });
+          return;
+        }
+
+        if (type === 'song') {
+          // fetch song metadata and play
+          try {
+            const resp = await saavnApi.getSongById(item.id || item.sid || item.songid);
+            const songData = (resp as any)?.data?.[0] || (resp as any)?.data?.songs?.[0] || (resp as any)?.data || resp;
+            
+            // Extract playable URL from downloadUrl array (prefer highest quality)
+            let uri = '';
+            if (Array.isArray(songData?.downloadUrl) && songData.downloadUrl.length > 0) {
+              // Sort by quality (highest first) and pick the first one
+              const sortedUrls = songData.downloadUrl.sort((a: any, b: any) => {
+                const qualityA = parseInt(a.quality?.replace('kbps', '') || '0');
+                const qualityB = parseInt(b.quality?.replace('kbps', '') || '0');
+                return qualityB - qualityA;
+              });
+              uri = sortedUrls[0]?.url || '';
+            }
+            
+            // Fallback to other possible URL fields
+            if (!uri) {
+              uri = songData?.media_url || songData?.media_preview_url || songData?.perma_url || songData?.url || '';
+            }
+            
+            if (!uri) {
+              Alert.alert('Playback error', 'Unable to retrieve playable URL for this track.');
+              return;
+            }
+            const track = {
+              id: songData?.id || item.id,
+              title: decodeHtmlEntities(songData?.title || songData?.name || item.title || ''),
+              artist: songData?.subtitle || songData?.artist || item.subtitle || item.artist || '',
+              uri,
+              artwork: pickImage(songData?.image || songData?.images || item.image)
+            } as Track;
+            await playSong(track);
+            open(track);
+          } catch (e) {
+            console.error('Failed to fetch or play song', e);
+            Alert.alert('Playback error', 'Failed to play track.');
           }
-        } catch {}
-      })();
-      return () => { active = false; };
-    }, [])
-  );
+          return;
+        }
+
+        if (type === 'playlist') {
+          (nav as any).navigate('Playlist', { playlist: item });
+          return;
+        }
+
+        if (type === 'artist') {
+          (nav as any).navigate('Artist', { artist: item });
+          return;
+        }
+
+        console.log('Unknown item type:', type, item);
+      } catch (err) {
+        console.error('[Home] handleItemPress error', err);
+      }
+    })();
+  }, [playSong, nav]);
+
+  const handleItemLongPress = useCallback((item: any) => {
+    // Show context menu
+    Alert.alert(
+      item.title || item.name || 'Options',
+      'Choose an action',
+      [
+        { text: 'Play', onPress: () => handleItemPress(item, item.type) },
+        { text: 'Add to Queue', onPress: () => Alert.alert('Queue', 'Added to queue') },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
+  }, [handleItemPress]);
+
+  const handleSeeAllPress = useCallback((sectionType: string) => {
+    // Navigate to full list screen
+    const sectionData = getSectionData(sectionType);
+    const sectionTitle = getSectionTitle(sectionType);
+    // For playlist-like sections, open playlist results screen
+    if (sectionType === 'trending_playlists' || sectionType === 'top_charts') {
+      (nav as any).navigate('PlaylistResults', { title: sectionTitle, data: sectionData });
+      return;
+    }
+    (nav as any).navigate('SectionList', {
+      type: sectionType,
+      title: sectionTitle,
+      data: sectionData
+    });
+  }, [nav]);
+
+  const getSectionTitle = (type: string) => {
+    switch (type) {
+      case 'new_albums': return 'New Albums';
+      case 'trending_songs': return 'Trending Songs';
+      case 'top_charts': return 'Top Charts';
+      case 'trending_playlists': return 'Trending Playlists';
+      case 'recommended_artists': return 'Recommended Artists';
+      default: return 'Section';
+    }
+  };
+
+  const getSectionData = (type: string) => {
+    switch (type) {
+      case 'new_albums': return newAlbums;
+      case 'trending_songs': return trendingSongs;
+      case 'top_charts': return topCharts;
+      case 'trending_playlists': return trendingPlaylists;
+      case 'recommended_artists': return recommendedArtists;
+      default: return [];
+    }
+  };
 
   const renderAlbum = ({ item }: { item: any }) => (
-    <Card style={{ width: 140, marginRight: 12 }}>
-      <Card.Cover source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } style={styles.albumImage} />
-      <Card.Content>
-        <Title numberOfLines={2} style={styles.albumTitle}>{item.title}</Title>
-        {item.artist ? <Subheading numberOfLines={1} style={styles.albumArtist}>{item.artist}</Subheading> : null}
-      </Card.Content>
-    </Card>
+    <TouchableOpacity
+      onPress={() => handleItemPress(item, 'album')}
+      onLongPress={() => handleItemLongPress(item)}
+      accessibilityLabel={`Album: ${item.title} by ${item.artist}`}
+      accessibilityRole="button"
+    >
+      <Card style={{ width: 140, marginRight: 12 }}>
+        <Card.Cover 
+          source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } 
+          style={styles.albumImage} 
+        />
+        <Card.Content>
+          <Title numberOfLines={1} style={styles.albumTitle}>{item.title}</Title>
+          {item.artist ? <Subheading numberOfLines={1} style={styles.albumArtist}>{item.artist}</Subheading> : null}
+        </Card.Content>
+      </Card>
+    </TouchableOpacity>
   );
 
-  const renderChart = ({ item }: { item: any }) => (
-    <Card style={{ width: 140, marginRight: 12 }}>
-      <Card.Cover source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } style={styles.albumImage} />
-      <Card.Content>
-        <Title numberOfLines={2} style={styles.albumTitle}>{item.title}</Title>
-        {item.subtitle ? <Subheading numberOfLines={1} style={styles.albumArtist}>{item.subtitle}</Subheading> : null}
-      </Card.Content>
-    </Card>
+  const renderSong = ({ item }: { item: any }) => (
+    <TouchableOpacity
+      onPress={() => handleItemPress(item, 'song')}
+      onLongPress={() => handleItemLongPress(item)}
+      accessibilityLabel={`Song: ${item.title} by ${item.subtitle}`}
+      accessibilityRole="button"
+    >
+      <Card style={{ width: 140, marginRight: 12 }}>
+        <Card.Cover 
+          source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } 
+          style={styles.albumImage} 
+        />
+        <Card.Content>
+          <Title numberOfLines={1} style={styles.albumTitle}>{item.title}</Title>
+          {item.subtitle ? <Subheading numberOfLines={1} style={styles.albumArtist}>{item.subtitle}</Subheading> : null}
+        </Card.Content>
+      </Card>
+    </TouchableOpacity>
   );
 
-  if (loading) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator /></View>;
+  const renderPlaylist = ({ item }: { item: any }) => (
+    <TouchableOpacity
+      onPress={() => handleItemPress(item, 'playlist')}
+      onLongPress={() => handleItemLongPress(item)}
+      accessibilityLabel={`Playlist: ${item.title}`}
+      accessibilityRole="button"
+    >
+      <Card style={{ width: 140, marginRight: 12 }}>
+        <Card.Cover 
+          source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } 
+          style={styles.albumImage} 
+        />
+        <Card.Content>
+          <Title numberOfLines={1} style={styles.albumTitle}>{item.title}</Title>
+          {item.subtitle ? <Subheading numberOfLines={1} style={styles.albumArtist}>{item.subtitle}</Subheading> : null}
+        </Card.Content>
+      </Card>
+    </TouchableOpacity>
+  );
 
-  const noData = !albums.length && !charts.length && (!launchPayload || Object.keys(launchPayload).length === 0);
+  const renderArtist = ({ item }: { item: any }) => (
+    <TouchableOpacity
+      onPress={() => handleItemPress(item, 'artist')}
+      onLongPress={() => handleItemLongPress(item)}
+      accessibilityLabel={`Artist: ${item.name}`}
+      accessibilityRole="button"
+      style={{ width: 110, marginRight: 12, alignItems: 'center' }}
+    >
+      <Avatar.Image 
+        source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } 
+        size={110} 
+        style={{ backgroundColor: '#ddd', marginBottom: 6 }} 
+      />
+      <Subheading numberOfLines={1} style={{ fontSize: 13, fontWeight: '600', textAlign: 'center' }}>
+        {item.name}
+      </Subheading>
+    </TouchableOpacity>
+  );
+
+  const renderSectionHeader = (title: string, sectionType: string, showSeeAll: boolean = true) => (
+    <View style={styles.sectionHeaderRow}>
+      <Title style={styles.sectionTitle}>{title}</Title>
+      {showSeeAll && (
+        <TouchableOpacity 
+          onPress={() => handleSeeAllPress(sectionType)}
+          accessibilityLabel={`See all ${title.toLowerCase()}`}
+          accessibilityRole="button"
+          style={styles.seeAllButton}
+        >
+          <Text style={styles.seeAllText}>See All</Text>
+          <MaterialIcons name="chevron-right" size={20} color="#666" />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
+  // Loading skeleton component
+  const LoadingSkeleton = () => (
+    <View style={{ padding: 16 }}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <View key={i} style={{ marginBottom: 24 }}>
+          <View style={[styles.sectionHeaderRow, { marginBottom: 12 }]}>
+            <View style={[styles.skeletonText, { width: 120, height: 24 }]} />
+          </View>
+          <View style={{ flexDirection: 'row' }}>
+            {[1, 2, 3].map((j) => (
+              <View key={j} style={[styles.skeletonCard, { marginRight: 12 }]} />
+            ))}
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+
+  if (loading) return <LoadingSkeleton />;
+
+  const noData = !newAlbums.length && !trendingSongs.length && !topCharts.length && !trendingPlaylists.length && !recommendedArtists.length;
   if (noData) return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <Text style={{ fontSize: 16, color: '#666', textAlign: 'center' }}>No data available. Check your network or try reloading the app.</Text>
@@ -150,161 +503,176 @@ export default function Home() {
 
   return (
     <View style={{ flex: 1 }}>
-      <Header />
       <FlatList
         data={[{ key: 'content' }]}
         keyExtractor={i => i.key}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
         renderItem={() => (
           <View style={{ padding: 16 }}>
             {/* New Albums Section */}
-            <View style={styles.sectionHeaderRow}>
-              <Title style={styles.sectionTitle}>New Albums</Title>
-            </View>
-            <FlatList 
-              data={albums.slice(0, 10)} 
-              keyExtractor={i => i.id.toString()} 
-              horizontal 
-              renderItem={renderAlbum} 
-              showsHorizontalScrollIndicator={false} 
-              style={{ marginBottom: 24 }} 
-            />
-
-            {/* Trending Songs Section (Top 10) */}
-            {charts.length > 0 && (
+            {newAlbums.length > 0 && (
               <>
-                <View style={styles.sectionHeaderRow}>
-                  <Title style={styles.sectionTitle}>Trending Songs</Title>
-                </View>
-                <FlatList 
-                  data={charts.slice(0, 10)} 
-                  keyExtractor={i => i.id.toString()} 
-                  horizontal 
-                  renderItem={renderChart} 
-                  showsHorizontalScrollIndicator={false} 
-                  style={{ marginBottom: 24 }} 
-                />
+                {renderSectionHeader('New Albums', 'new_albums')}
+                <HorizontalScroller>
+                  {newAlbums.map((item) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      onPress={() => handleItemPress(item, item.type)}
+                      onLongPress={() => handleItemLongPress(item)}
+                      accessibilityLabel={`Album: ${item.title} by ${item.artist}`}
+                      accessibilityRole="button"
+                    >
+                      <Card style={{ width: 140 }}>
+                        <Card.Cover 
+                          source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } 
+                          style={styles.albumImage} 
+                        />
+                        <Card.Content>
+                          <Title numberOfLines={2} style={styles.albumTitle}>{item.title}</Title>
+                          {item.artist ? <Subheading numberOfLines={1} style={styles.albumArtist}>{item.artist}</Subheading> : null}
+                        </Card.Content>
+                      </Card>
+                    </TouchableOpacity>
+                  ))}
+                </HorizontalScroller>
+              </>
+            )}
+
+            {/* Trending Songs Section */}
+            {trendingSongs.length > 0 && (
+              <>
+                {renderSectionHeader('Trending Songs', 'trending_songs')}
+                <HorizontalScroller>
+                  {trendingSongs.map((item) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      onPress={() => handleItemPress(item, 'song')}
+                      onLongPress={() => handleItemLongPress(item)}
+                      accessibilityLabel={`Song: ${item.title} by ${item.subtitle}`}
+                      accessibilityRole="button"
+                    >
+                      <Card style={{ width: 140 }}>
+                        <Card.Cover 
+                          source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } 
+                          style={styles.albumImage} 
+                        />
+                        <Card.Content>
+                          <Title numberOfLines={2} style={styles.albumTitle}>{item.title}</Title>
+                          {item.subtitle ? <Subheading numberOfLines={1} style={styles.albumArtist}>{item.subtitle}</Subheading> : null}
+                        </Card.Content>
+                      </Card>
+                    </TouchableOpacity>
+                  ))}
+                </HorizontalScroller>
+              </>
+            )}
+
+            {/* Top Charts Section */}
+            {topCharts.length > 0 && (
+              <>
+                {renderSectionHeader('Top Charts', 'top_charts')}
+                <HorizontalScroller>
+                  {topCharts.map((item) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      onPress={() => handleItemPress(item, 'playlist')}
+                      onLongPress={() => handleItemLongPress(item)}
+                      accessibilityLabel={`Chart: ${item.title}`}
+                      accessibilityRole="button"
+                    >
+                      <Card style={{ width: 140 }}>
+                        <Card.Cover 
+                          source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } 
+                          style={styles.albumImage} 
+                        />
+                        <Card.Content>
+                          <Title numberOfLines={2} style={styles.albumTitle}>{item.title}</Title>
+                          {item.subtitle ? <Subheading numberOfLines={1} style={styles.albumArtist}>{item.subtitle}</Subheading> : null}
+                        </Card.Content>
+                      </Card>
+                    </TouchableOpacity>
+                  ))}
+                </HorizontalScroller>
               </>
             )}
 
             {/* Trending Playlists Section */}
-            {launchPayload ? (
-              (() => {
-                const launchData = launchPayload?.data || launchPayload;
-                const playlists = Array.isArray(launchData?.top_playlists) ? launchData.top_playlists : (Array.isArray(launchData?.playlists) ? launchData.playlists : []);
-                console.log('[Home] Playlists count:', playlists.length);
-                
-                if (playlists.length === 0) return null;
-                
-                return (
-                  <View style={{ marginBottom: 24 }}>
-                    <View style={styles.sectionHeaderRow}>
-                      <Title style={styles.sectionTitle}>Trending Playlists</Title>
-                    </View>
-                    <FlatList 
-                      data={playlists.slice(0, 10).map((it: any, idx: number) => ({ 
-                        ...it, 
-                        id: it.id ?? it.sid ?? idx,
-                        title: decodeHtmlEntities(it.title || it.name || ''),
-                        image: pickImage(it.image || it.images)
-                      }))} 
-                      keyExtractor={(i: any) => i.id.toString()} 
-                      horizontal 
-                        renderItem={({ item }) => (
-                        <Card style={{ width: 140, marginRight: 12 }}>
-                          <Card.Cover source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } style={styles.albumImage} />
-                          <Card.Content>
-                            <Title numberOfLines={2} style={styles.albumTitle}>{item.title}</Title>
-                          </Card.Content>
-                        </Card>
-                      )} 
-                      showsHorizontalScrollIndicator={false} 
-                    />
-                  </View>
-                );
-              })()
-            ) : null}
-
-            {/* Top Charts Section */}
-            {launchPayload ? (
-              (() => {
-                const launchData = launchPayload?.data || launchPayload;
-                const topCharts = Array.isArray(launchData?.top_charts) ? launchData.top_charts : (Array.isArray(launchData?.charts) ? launchData.charts : []);
-                console.log('[Home] Top Charts count:', topCharts.length);
-                
-                if (topCharts.length === 0) return null;
-                
-                return (
-                  <View style={{ marginBottom: 24 }}>
-                    <View style={styles.sectionHeaderRow}>
-                      <Title style={styles.sectionTitle}>Top Charts</Title>
-                    </View>
-                    <FlatList 
-                      data={topCharts.slice(0, 10).map((it: any, idx: number) => ({ 
-                        ...it, 
-                        id: it.id ?? it.sid ?? idx,
-                        title: decodeHtmlEntities(it.title || it.name || ''),
-                        artist: it.subtitle || (it.artists?.primary?.[0]?.name) || 'Various Artists',
-                        image: pickImage(it.image || it.images)
-                      }))} 
-                      keyExtractor={(i: any) => i.id.toString()} 
-                      horizontal 
-                      renderItem={({ item }) => (
-                        <Card style={{ width: 140, marginRight: 12 }}>
-                          <Card.Cover source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } style={styles.albumImage} />
-                          <Card.Content>
-                            <Title numberOfLines={2} style={styles.albumTitle}>{item.title}</Title>
-                            {item.artist ? <Subheading numberOfLines={1} style={styles.albumArtist}>{item.artist}</Subheading> : null}
-                          </Card.Content>
-                        </Card>
-                      )} 
-                      showsHorizontalScrollIndicator={false} 
-                    />
-                  </View>
-                );
-              })()
-            ) : null}
+            {trendingPlaylists.length > 0 && (
+              <>
+                {renderSectionHeader('Trending Playlists', 'trending_playlists')}
+                <HorizontalScroller>
+                  {trendingPlaylists.map((item) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      onPress={() => handleItemPress(item, 'playlist')}
+                      onLongPress={() => handleItemLongPress(item)}
+                      accessibilityLabel={`Playlist: ${item.title}`}
+                      accessibilityRole="button"
+                    >
+                      <Card style={{ width: 140 }}>
+                        <Card.Cover 
+                          source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } 
+                          style={styles.albumImage} 
+                        />
+                        <Card.Content>
+                          <Title numberOfLines={2} style={styles.albumTitle}>{item.title}</Title>
+                          {item.subtitle ? <Subheading numberOfLines={1} style={styles.albumArtist}>{item.subtitle}</Subheading> : null}
+                        </Card.Content>
+                      </Card>
+                    </TouchableOpacity>
+                  ))}
+                </HorizontalScroller>
+              </>
+            )}
 
             {/* Recommended Artists Section */}
-            {launchPayload ? (
-              (() => {
-                const launchData = launchPayload?.data || launchPayload;
-                const artists = Array.isArray(launchData?.artist_recos) ? launchData.artist_recos : 
-                                (Array.isArray(launchData?.top_artists) ? launchData.top_artists : 
-                                (Array.isArray(launchData?.artists) ? launchData.artists : []));
-                console.log('[Home] Artists count:', artists.length);
-                
-                if (artists.length === 0) return null;
-                
-                return (
-                  <View style={{ marginBottom: 24 }}>
-                    <View style={styles.sectionHeaderRow}>
-                      <Title style={styles.sectionTitle}>Recommended Artists</Title>
-                    </View>
-                    <FlatList 
-                      data={artists.slice(0, 6).map((it: any, idx: number) => ({ 
-                        ...it, 
-                        id: it.id ?? idx,
-                        name: decodeHtmlEntities(it.name || it.title || ''),
-                        image: pickImage(it.image || it.images)
-                      }))} 
-                      keyExtractor={(i: any) => i.id.toString()} 
-                      horizontal 
-                      renderItem={({ item }) => (
-                        <View style={{ width: 110, marginRight: 12, alignItems: 'center' }}>
-                          <Avatar.Image source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } size={110} style={{ backgroundColor: '#ddd', marginBottom: 6 }} />
-                          <Subheading numberOfLines={1} style={{ fontSize: 13, fontWeight: '600', textAlign: 'center' }}>{item.name}</Subheading>
-                        </View>
-                      )} 
-                      showsHorizontalScrollIndicator={false} 
-                    />
-                  </View>
-                );
-              })()
-            ) : null}
+            {recommendedArtists.length > 0 && (
+              <>
+                {renderSectionHeader('Recommended Artists', 'recommended_artists')}
+                <HorizontalScroller>
+                  {recommendedArtists.map((item) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      onPress={() => handleItemPress(item, 'artist')}
+                      onLongPress={() => handleItemLongPress(item)}
+                      accessibilityLabel={`Artist: ${item.name}`}
+                      accessibilityRole="button"
+                      style={{ width: 110, alignItems: 'center' }}
+                    >
+                      <Avatar.Image 
+                        source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } 
+                        size={110} 
+                        style={{ backgroundColor: '#ddd', marginBottom: 6 }} 
+                      />
+                      <Subheading numberOfLines={1} style={{ fontSize: 13, fontWeight: '600', textAlign: 'center' }}>
+                        {item.name}
+                      </Subheading>
+                    </TouchableOpacity>
+                  ))}
+                </HorizontalScroller>
+              </>
+            )}
           </View>
         )}
       />
-      {/* FullPlayer is rendered at app root by PlayerProvider */}
+      
+      {/* Mini Player */}
+      {currentSong && (
+        <MiniPlayer
+          isPlaying={isPlaying}
+          onPlayPause={() => isPlaying ? pauseSong() : playSong(currentSong)}
+          onNext={nextSong}
+          onPrevious={previousSong}
+          onOpenFullPlayer={() => currentSong && open(currentSong)}
+          currentSong={{
+            title: currentSong.title || 'Unknown',
+            artist: currentSong.artist || 'Unknown Artist',
+            cover: currentSong.artwork || require('../../assets/icon.png')
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -314,6 +682,11 @@ const styles = StyleSheet.create({
   albumTitle: { marginTop: 6, fontSize: 13, fontWeight: '600' },
   albumArtist: { marginTop: 2, fontSize: 11, color: '#666' },
   sectionTitle: { fontSize: 20, fontWeight: '700', marginBottom: 12 },
+  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  seeAllButton: { flexDirection: 'row', alignItems: 'center' },
+  seeAllText: { fontSize: 14, color: '#666', marginRight: 4 },
   chartRow: { flexDirection: 'row', alignItems: 'center' },
   chartImage: { width: 56, height: 56, borderRadius: 4, backgroundColor: '#ddd' },
+  skeletonCard: { width: 140, height: 180, backgroundColor: '#e0e0e0', borderRadius: 6 },
+  skeletonText: { backgroundColor: '#e0e0e0', borderRadius: 4 }
 });

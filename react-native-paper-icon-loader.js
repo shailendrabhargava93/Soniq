@@ -2,5 +2,5 @@
 // Place this in the root of your project
 
 module.exports = () => {
-  return require('@expo/vector-icons/MaterialCommunityIcons').default;
+  return require('@expo/vector-icons/MaterialIcons');
 };

@@ -17,9 +17,14 @@ export default function TrackList<T>({
   keyExtractor?: (item: T, index: number) => string;
 }) {
   if (loading) {
+    const arr = new Array(skeletonCount).fill(0);
     return (
-      <View style={{ padding: 12 }}>
-        <Text>Loading...</Text>
+      <View style={{ padding: 8 }}>
+        {arr.map((_, i) => (
+          <View key={i} style={{ marginBottom: 8 }}>
+            <Text style={{ backgroundColor: '#eee', height: 48, borderRadius: 6 }} />
+          </View>
+        ))}
       </View>
     );
   }

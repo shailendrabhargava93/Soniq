@@ -1,6 +1,6 @@
 import { Audio } from 'expo-av';
 
-type PlaybackStatus = Audio.SoundPlaybackStatus | null;
+type PlaybackStatus = any;
 
 class AudioService {
   private sound: Audio.Sound | null = null;
@@ -11,6 +11,17 @@ class AudioService {
     if (this.sound) {
       await this.unload();
     }
+    try {
+      await Audio.setAudioModeAsync({
+        staysActiveInBackground: true,
+        playsInSilentModeIOS: true,
+        allowsRecordingIOS: false,
+        shouldDuckAndroid: true,
+      });
+    } catch (e) {
+      // ignore if platform doesn't support
+    }
+
     const { sound, status } = await Audio.Sound.createAsync(
       { uri },
       { shouldPlay: false }
@@ -39,6 +50,28 @@ class AudioService {
     await this.sound.unloadAsync();
     this.sound = null;
     this.status = null;
+  }
+
+  async setPosition(ms: number) {
+    if (!this.sound) return;
+    if (typeof this.sound.setPositionAsync === 'function') {
+      await this.sound.setPositionAsync(ms);
+    }
+  }
+
+  getStatus() {
+    return this.status;
+  }
+
+  // placeholder hooks for next/previous - app-level queue should implement these
+  async replayNext() {
+    // no-op; implement queue handling elsewhere
+    return;
+  }
+
+  async replayPrevious() {
+    // no-op; implement queue handling elsewhere
+    return;
   }
 
   setStatusUpdate(callback: (status: PlaybackStatus) => void) {

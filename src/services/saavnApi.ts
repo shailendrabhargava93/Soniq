@@ -26,7 +26,7 @@ const getInflight = () => {
 };
 
 const markFetchFailed = (message?: string) => {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  if (typeof navigator !== 'undefined' && !(navigator as any).onLine) {
     setLastFetchFailed(true, message ?? 'Network offline');
   } else {
     setLastFetchFailed(false);
@@ -43,6 +43,36 @@ export const saavnApi = {
       console.error('Error searching songs:', error);
       markFetchFailed();
       throw error;
+    }
+  },
+
+  searchPlaylists: async (query: string, limit: number = 10): Promise<unknown> => {
+    try {
+      const inflight = getInflight().searches;
+      const key = `playlists:${query}::${limit}`;
+      return await withInflight(inflight, key, async () => {
+        const response = await fetchJson(`${BASE_URL}/search/playlists?query=${encodeURIComponent(query)}&page=0&limit=${limit}`, 'Playlists search failed');
+        console.log('[saavnApi] searchPlaylists response:', response);
+        const list = response?.data?.results || response?.results || response?.data || response?.content || response?.playlists || [];
+        console.log('[saavnApi] Extracted playlists list:', list.length);
+        return list;
+      });
+    } catch (error) {
+      console.error('Error searching playlists:', error);
+      markFetchFailed();
+      throw error;
+    }
+  },
+
+  searchTop: async (): Promise<unknown> => {
+    try {
+      const resp = await fetchJson(`${BASE_URL}/search/top`, 'Top searches failed');
+      const list = resp?.data?.results || resp?.results || resp?.data || resp?.content || [];
+      return list;
+    } catch (e) {
+      console.error('Error fetching top searches', e);
+      markFetchFailed();
+      throw e;
     }
   },
 
@@ -137,6 +167,47 @@ export const saavnApi = {
       });
     } catch (error) {
       console.error('Error fetching album:', error);
+      markFetchFailed();
+      throw error;
+    }
+  },
+
+  getPlaylistById: async (playlistId: string, limit: number = 100): Promise<unknown> => {
+    try {
+      const inflight = getInflight().playlists;
+      if (inflight.has(playlistId)) return inflight.get(playlistId)!;
+
+      return await withInflight(inflight, playlistId, async () => {
+        const data = await fetchJson(`${BASE_URL}/playlists?id=${playlistId}&limit=${limit}&page=0`, 'Failed to fetch playlist');
+        try {
+          const songsFromData = Array.isArray(data?.data?.songs) ? data.data.songs : Array.isArray(data?.songs) ? data.songs : Array.isArray(data?.data) ? data.data : [];
+          if (!Array.isArray(data?.data?.songs) && songsFromData.length > 0) {
+            data.data = data.data || {};
+            data.data.songs = songsFromData;
+          }
+        } catch {
+          // ignore
+        }
+        return data;
+      });
+    } catch (error) {
+      console.error('Error fetching playlist:', error);
+      markFetchFailed();
+      throw error;
+    }
+  },
+
+  getSongById: async (songId: string): Promise<unknown> => {
+    try {
+      const inflight = getInflight().songsByIds;
+      if (inflight.has(songId)) return inflight.get(songId)!;
+
+      return await withInflight(inflight, songId, async () => {
+        const data = await fetchJson(`${BASE_URL}/songs/${songId}`, 'Failed to fetch song');
+        return data;
+      });
+    } catch (error) {
+      console.error('Error fetching song:', error);
       markFetchFailed();
       throw error;
     }
