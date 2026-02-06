@@ -102,7 +102,7 @@ export default function FullPlayer({ visible, onClose, track }: { visible: boole
 
         {track ? (
           <View style={styles.content}>
-            <Image source={ track.artwork ? { uri: track.artwork } : require('../../assets/icon.png') } style={styles.art} />
+            <Image source={ track.artwork ? { uri: track.artwork } : require('../../assets/soniq-logo.png') } style={styles.art} />
             <View style={{ alignItems: 'center', marginTop: 12 }}>
               <Text style={styles.title} numberOfLines={2}>{track.title}</Text>
               <Text style={styles.subtitle} numberOfLines={2}>{track.artist}</Text>

@@ -78,7 +78,7 @@ const AlbumScreen: React.FC<AlbumScreenProps> = () => {
           <View style={{ alignItems: 'center', marginBottom: 12 }}>
           <Card style={{ width: 160, height: 160, borderRadius: 8, overflow: 'hidden' }}>
             <Card.Cover
-              source={album?.image ? { uri: album.image } : require('../../assets/icon.png')}
+              source={album?.image ? { uri: album.image } : require('../../assets/soniq-logo.png')}
               style={{ width: 160, height: 160 }}
             />
           </Card>

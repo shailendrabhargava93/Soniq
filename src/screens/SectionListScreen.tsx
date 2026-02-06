@@ -22,7 +22,7 @@ const SectionListScreen: React.FC<SectionListScreenProps> = () => {
       }}>
       <Card style={styles.itemCard}>
         <Card.Cover
-          source={item?.image ? { uri: item.image } : require('../../assets/icon.png')}
+          source={item?.image ? { uri: item.image } : require('../../assets/soniq-logo.png')}
           style={styles.itemImage}
         />
         <Card.Content>

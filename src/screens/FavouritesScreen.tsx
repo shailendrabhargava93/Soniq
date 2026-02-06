@@ -138,7 +138,7 @@ export default function FavouritesScreen() {
           <FlatList data={songs} keyExtractor={(i, idx) => (i?.id ? String(i.id) : String(idx))} renderItem={({ item, index }) => (
             <TouchableOpacity onPress={async () => { if (!item.uri) { try { const resp: any = await saavnApi.getSongById(item.id); const obj = (resp?.data?.[0]) || resp?.data || resp; item.uri = getPlayableUrl(obj) || item.uri; } catch (e) { console.warn(e); } } if (!item.uri) return Alert.alert('Playback error','No playable URL'); await player.playSong(item); player.open(item); }}>
               <Card style={{ marginHorizontal: 12, marginVertical: 6 }}>
-                <Card.Title title={item.title} subtitle={item.artist} left={() => <Avatar.Image size={48} source={ item.artwork ? { uri: item.artwork } : require('../../assets/icon.png')} />} right={() => <IconButton icon="delete" onPress={() => removeSong(index)} />} />
+                <Card.Title title={item.title} subtitle={item.artist} left={() => <Avatar.Image size={48} source={ item.artwork ? { uri: item.artwork } : require('../../assets/soniq-logo.png')} />} right={() => <IconButton icon="delete" onPress={() => removeSong(index)} />} />
               </Card>
             </TouchableOpacity>
           )} ListEmptyComponent={<View style={{ padding: 16 }}><Text>No favourite songs</Text></View>} />
@@ -153,7 +153,7 @@ export default function FavouritesScreen() {
           <FlatList data={albums} keyExtractor={(i, idx) => (i?.id ? String(i.id) : String(idx))} renderItem={({ item, index }) => (
             <TouchableOpacity onPress={() => player.open(item)}>
               <Card style={{ marginHorizontal: 12, marginVertical: 6 }}>
-                <Card.Title title={item.title} subtitle={String((item.songs || []).length) + ' songs'} left={() => <Avatar.Image size={56} source={ item.image ? { uri: item.image } : require('../../assets/icon.png')} />} right={() => <IconButton icon="delete" onPress={() => removeAlbum(index)} />} />
+                <Card.Title title={item.title} subtitle={String((item.songs || []).length) + ' songs'} left={() => <Avatar.Image size={56} source={ item.image ? { uri: item.image } : require('../../assets/soniq-logo.png')} />} right={() => <IconButton icon="delete" onPress={() => removeAlbum(index)} />} />
               </Card>
             </TouchableOpacity>
           )} ListEmptyComponent={<View style={{ padding: 16 }}><Text>No favourite albums</Text></View>} />

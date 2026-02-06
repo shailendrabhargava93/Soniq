@@ -45,7 +45,7 @@ const ArtistScreen: React.FC<ArtistScreenProps> = () => {
       <FlatList
         ListHeaderComponent={<View style={{ padding: 16, alignItems: 'center' }}>
           <Card style={{ width: 180, height: 180, borderRadius: 8, overflow: 'hidden' }}>
-            <Card.Cover source={ artist?.image ? { uri: artist.image } : require('../../assets/icon.png') } style={{ width: 180, height: 180 }} />
+            <Card.Cover source={ artist?.image ? { uri: artist.image } : require('../../assets/soniq-logo.png') } style={{ width: 180, height: 180 }} />
           </Card>
           <Text style={{ marginTop: 12, color: theme.colors.onSurface }}>{artist?.bio || ''}</Text>
           <View style={{ width: '100%', marginTop: 12 }}>
@@ -53,7 +53,7 @@ const ArtistScreen: React.FC<ArtistScreenProps> = () => {
             <FlatList horizontal data={topSongs} keyExtractor={(i) => i.id} renderItem={({ item }) => (
               <TouchableOpacity style={{ width: 140, marginRight: 12 }} onPress={async () => { await player.playSong(item); player.open(item); }}>
                 <Card>
-                  <Card.Cover source={ item.artwork ? { uri: item.artwork } : require('../../assets/icon.png') } style={{ height: 120 }} />
+                  <Card.Cover source={ item.artwork ? { uri: item.artwork } : require('../../assets/soniq-logo.png') } style={{ height: 120 }} />
                   <Text style={{ padding: 6 }}>{item.title}</Text>
                 </Card>
               </TouchableOpacity>
@@ -64,7 +64,7 @@ const ArtistScreen: React.FC<ArtistScreenProps> = () => {
         renderItem={({ item }) => (
           <TouchableOpacity style={{ padding: 12 }} onPress={() => (navigation as any).navigate('Album', { album: item })}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Card.Cover source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } style={{ width: 72, height: 72 }} />
+              <Card.Cover source={ item.image ? { uri: item.image } : require('../../assets/soniq-logo.png') } style={{ width: 72, height: 72 }} />
               <View style={{ marginLeft: 12 }}>
                 <Text style={{ fontWeight: '700' }}>{item.title}</Text>
                 <Text style={{ color: '#666' }}>{item.year || ''}</Text>

@@ -387,7 +387,7 @@ export default function Home() {
     >
       <Card style={{ width: 140, marginRight: 12 }}>
         <Card.Cover 
-          source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } 
+          source={ item.image ? { uri: item.image } : require('../../assets/soniq-logo.png') } 
           style={styles.albumImage} 
         />
         <Card.Content>
@@ -407,7 +407,7 @@ export default function Home() {
     >
       <Card style={{ width: 140, marginRight: 12 }}>
         <Card.Cover 
-          source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } 
+          source={ item.image ? { uri: item.image } : require('../../assets/soniq-logo.png') } 
           style={styles.albumImage} 
         />
         <Card.Content>
@@ -427,7 +427,7 @@ export default function Home() {
     >
       <Card style={{ width: 140, marginRight: 12 }}>
         <Card.Cover 
-          source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } 
+          source={ item.image ? { uri: item.image } : require('../../assets/soniq-logo.png') } 
           style={styles.albumImage} 
         />
         <Card.Content>
@@ -447,7 +447,7 @@ export default function Home() {
       style={{ width: 110, marginRight: 12, alignItems: 'center' }}
     >
       <Avatar.Image 
-        source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } 
+        source={ item.image ? { uri: item.image } : require('../../assets/soniq-logo.png') } 
         size={110} 
         style={{ backgroundColor: '#ddd', marginBottom: 6 }} 
       />
@@ -526,7 +526,7 @@ export default function Home() {
                     >
                       <Card style={{ width: 140 }}>
                         <Card.Cover 
-                          source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } 
+                          source={ item.image ? { uri: item.image } : require('../../assets/soniq-logo.png') } 
                           style={styles.albumImage} 
                         />
                         <Card.Content>
@@ -555,7 +555,7 @@ export default function Home() {
                     >
                       <Card style={{ width: 140 }}>
                         <Card.Cover 
-                          source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } 
+                          source={ item.image ? { uri: item.image } : require('../../assets/soniq-logo.png') } 
                           style={styles.albumImage} 
                         />
                         <Card.Content>
@@ -584,7 +584,7 @@ export default function Home() {
                     >
                       <Card style={{ width: 140 }}>
                         <Card.Cover 
-                          source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } 
+                          source={ item.image ? { uri: item.image } : require('../../assets/soniq-logo.png') } 
                           style={styles.albumImage} 
                         />
                         <Card.Content>
@@ -613,7 +613,7 @@ export default function Home() {
                     >
                       <Card style={{ width: 140 }}>
                         <Card.Cover 
-                          source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } 
+                          source={ item.image ? { uri: item.image } : require('../../assets/soniq-logo.png') } 
                           style={styles.albumImage} 
                         />
                         <Card.Content>
@@ -642,7 +642,7 @@ export default function Home() {
                       style={{ width: 110, alignItems: 'center' }}
                     >
                       <Avatar.Image 
-                        source={ item.image ? { uri: item.image } : require('../../assets/icon.png') } 
+                        source={ item.image ? { uri: item.image } : require('../../assets/soniq-logo.png') } 
                         size={110} 
                         style={{ backgroundColor: '#ddd', marginBottom: 6 }} 
                       />
@@ -669,7 +669,7 @@ export default function Home() {
           currentSong={{
             title: currentSong.title || 'Unknown',
             artist: currentSong.artist || 'Unknown Artist',
-            cover: currentSong.artwork || require('../../assets/icon.png')
+            cover: currentSong.artwork || require('../../assets/soniq-logo.png')
           }}
         />
       )}

@@ -31,7 +31,7 @@ export default function Header({ onRecentlyPlayedClick, onSettingsClick, title, 
           </View>
         ) : (
           <>
-            <Image source={require('../../assets/icon.png')} style={styles.logo} />
+            <Image source={require('../../assets/soniq-logo.png')} style={styles.logo} />
             <Text style={[styles.title, { color: fg }]}>Wave</Text>
           </>
         )}

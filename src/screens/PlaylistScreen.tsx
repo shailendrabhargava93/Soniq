@@ -81,7 +81,7 @@ const PlaylistScreen: React.FC<PlaylistScreenProps> = () => {
           <View style={{ alignItems: 'center', marginBottom: 12 }}>
           <Card style={{ width: 160, height: 160, borderRadius: 8, overflow: 'hidden' }}>
             <Card.Cover
-              source={ (playlist?.image || playlist?.thumbnail) ? { uri: getBestImage(playlist?.image || playlist?.thumbnail) } : require('../../assets/icon.png') }
+              source={ (playlist?.image || playlist?.thumbnail) ? { uri: getBestImage(playlist?.image || playlist?.thumbnail) } : require('../../assets/soniq-logo.png') }
               style={{ width: 160, height: 160 }}
             />
           </Card>
