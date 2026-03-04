@@ -1,6 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
-import { Card } from 'react-native-paper';
+import { StyleSheet, TouchableOpacity } from "react-native";
+import { Card, Text } from 'react-native-paper';
 import { useTheme } from '../contexts/ThemeContext';
 
 interface MusicCardProps {
@@ -11,18 +10,11 @@ interface MusicCardProps {
 
 export default function MusicCard({ item, type, onPress }: MusicCardProps) {
   const { theme } = useTheme();
+  const ui = theme.ui;
 
   const getImageUrl = () => {
-    if (type === 'songs') {
-      return item.image?.[2]?.url || item.image?.[1]?.url || item.image?.[0]?.url;
-    } else if (type === 'albums') {
-      return item.image?.[2]?.url || item.image?.[1]?.url || item.image?.[0]?.url;
-    } else if (type === 'playlists') {
-      return item.image?.[2]?.url || item.image?.[1]?.url || item.image?.[0]?.url;
-    } else if (type === 'artists') {
-      return item.image?.[2]?.url || item.image?.[1]?.url || item.image?.[0]?.url;
-    }
-    return 'https://picsum.photos/seed/music/150/150';
+    if (typeof item.image === 'string') return item.image;
+    return item.image?.[2]?.url || item.image?.[1]?.url || item.image?.[0]?.url || 'https://picsum.photos/seed/music/150/150';
   };
 
   const getTitle = () => {
@@ -55,16 +47,53 @@ export default function MusicCard({ item, type, onPress }: MusicCardProps) {
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
-      <Card style={[styles.card, { width: cardWidth, backgroundColor: theme.colors.surface }]}>
+      <Card
+        style={[
+          styles.card,
+          {
+            width: cardWidth,
+            marginRight: ui.spacing.md,
+            backgroundColor: theme.colors.surface,
+            elevation: ui.shadow.card.elevation,
+            shadowColor: ui.shadow.card.color,
+            shadowOpacity: ui.shadow.card.opacity,
+            shadowRadius: ui.shadow.card.radius,
+          },
+        ]}
+      >
         <Card.Cover
           source={{ uri: getImageUrl() }}
-          style={[styles.cover, { height: cardWidth }]}
+          style={[
+            styles.cover,
+            {
+              height: cardWidth,
+              borderTopLeftRadius: ui.radius.md,
+              borderTopRightRadius: ui.radius.md,
+            },
+          ]}
           resizeMode="cover"
         />
-        <Card.Content style={[styles.content, { backgroundColor: theme.colors.surface }]}>
+        <Card.Content
+          style={[
+            styles.content,
+            {
+              backgroundColor: theme.colors.surface,
+              padding: ui.spacing.sm,
+              borderBottomLeftRadius: ui.radius.md,
+              borderBottomRightRadius: ui.radius.md,
+            },
+          ]}
+        >
           <Text 
-            numberOfLines={2} 
-            style={[styles.title, { color: theme.colors.onSurface }]}
+            numberOfLines={1} 
+            style={[
+              styles.title,
+              {
+                color: theme.colors.onSurface,
+                fontWeight: ui.typography.miniTitle.fontWeight,
+                marginBottom: ui.spacing.xxs,
+              },
+            ]}
           >
             {getTitle()}
           </Text>
@@ -84,25 +113,11 @@ export default function MusicCard({ item, type, onPress }: MusicCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    marginRight: 12,
-    elevation: 3,
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
   },
-  cover: {
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-  },
-  content: {
-    padding: 8,
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
-  },
+  cover: {},
+  content: {},
   title: {
-    fontWeight: '600',
-    marginBottom: 2,
   },
   subtitle: {
     opacity: 0.8,

@@ -1,7 +1,6 @@
 import { fetchJson, withInflight } from '../utils/fetch';
 import { setLastFetchFailed } from './networkStatus';
-import { getBestImage } from '../utils/normalize';
-import type { Any } from '../types/api';
+import type from "../types/api";
 import { getMeta, setMeta } from './storageCompat';
 
 const BASE_URL = 'https://saavn-api-client.vercel.app/api';
@@ -73,6 +72,18 @@ export const saavnApi = {
       console.error('Error fetching top searches', e);
       markFetchFailed();
       throw e;
+    }
+  },
+
+  search: async (query: string): Promise<unknown> => {
+    try {
+      const inflight = getInflight().searches;
+      const key = `global:${query}`;
+      return await withInflight(inflight, key, () => fetchJson(`${BASE_URL}/search?query=${encodeURIComponent(query)}`, 'Global search failed'));
+    } catch (error) {
+      console.error('Error global searching:', error);
+      markFetchFailed();
+      throw error;
     }
   },
 
@@ -192,6 +203,37 @@ export const saavnApi = {
       });
     } catch (error) {
       console.error('Error fetching playlist:', error);
+      markFetchFailed();
+      throw error;
+    }
+  },
+
+  getArtistById: async (artistId: string, limit: number = 100): Promise<unknown> => {
+    try {
+      const inflight = getInflight().artists;
+      if (inflight.has(artistId)) return inflight.get(artistId)!;
+
+      return await withInflight(inflight, artistId, async () => {
+        const data = await fetchJson(`${BASE_URL}/artists?id=${artistId}&limit=${limit}&page=0`, 'Failed to fetch artist');
+        try {
+          // normalize songs and albums arrays if present in different keys
+          const songsFromData = Array.isArray(data?.data?.songs) ? data.data.songs : Array.isArray(data?.songs) ? data.songs : Array.isArray(data?.data) ? data.data : [];
+          const albumsFromData = Array.isArray(data?.data?.albums) ? data.data.albums : Array.isArray(data?.albums) ? data.albums : Array.isArray(data?.data?.albums) ? data.data.albums : [];
+          if (!Array.isArray(data?.data?.songs) && songsFromData.length > 0) {
+            data.data = data.data || {};
+            data.data.songs = songsFromData;
+          }
+          if (!Array.isArray(data?.data?.albums) && albumsFromData.length > 0) {
+            data.data = data.data || {};
+            data.data.albums = albumsFromData;
+          }
+        } catch {
+          // ignore
+        }
+        return data;
+      });
+    } catch (error) {
+      console.error('Error fetching artist:', error);
       markFetchFailed();
       throw error;
     }

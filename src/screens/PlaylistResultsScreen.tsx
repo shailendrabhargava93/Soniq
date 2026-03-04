@@ -1,11 +1,14 @@
-import React, { useEffect, useState } from 'react';
-import { View, FlatList, TouchableOpacity, Alert, Image, ActivityIndicator, Text } from 'react-native';
-import { Title, Card, Subheading } from 'react-native-paper';
+import React, { useEffect, useState } from "react";
+import { View, FlatList, TouchableOpacity, Alert, Image, StyleSheet } from 'react-native';
+import { Text } from "react-native-paper";
 import { useTheme } from '../contexts/ThemeContext';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import Header from '../components/Header';
+import SkeletonLoader from '../components/SkeletonLoader';
 import { saavnApi } from '../services/saavnApi';
 import { getBestImage } from '../utils/normalize';
+
+const HEADER_HEIGHT = 60;
 
 export default function PlaylistResultsScreen() {
   const { theme } = useTheme();
@@ -57,10 +60,11 @@ export default function PlaylistResultsScreen() {
   if (loading && playlists.length === 0) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-        <Header title={title} showBack onBack={() => (nav as any).goBack()} />
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
-          <Text style={{ color: theme.colors.onSurface, marginTop: 16 }}>Loading playlists...</Text>
+        <View style={[styles.headerWrapper, { backgroundColor: theme.colors.surface }]}>
+          <Header title={title} showBack onBack={() => (nav as any).goBack()} />
+        </View>
+        <View style={{ flex: 1, paddingTop: HEADER_HEIGHT }}>
+          <SkeletonLoader type="grid" count={6} />
         </View>
       </View>
     );
@@ -69,8 +73,10 @@ export default function PlaylistResultsScreen() {
   if (playlists.length === 0) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-        <Header title={title} showBack onBack={() => (nav as any).goBack()} />
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <View style={[styles.headerWrapper, { backgroundColor: theme.colors.surface }]}>
+          <Header title={title} showBack onBack={() => (nav as any).goBack()} />
+        </View>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: HEADER_HEIGHT }}>
           <Text style={{ color: theme.colors.onSurface }}>No playlists found</Text>
         </View>
       </View>
@@ -79,11 +85,13 @@ export default function PlaylistResultsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <Header title={title} showBack onBack={() => (nav as any).goBack()} hideThemeToggle />
+      <View style={[styles.headerWrapper, { backgroundColor: theme.colors.surface }]}>
+        <Header title={title} showBack onBack={() => (nav as any).goBack()} hideThemeToggle />
+      </View>
       <FlatList
         data={playlists}
         keyExtractor={(i) => (i?.id?.toString && i.id.toString()) || Math.random().toString()}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: HEADER_HEIGHT + 8, paddingBottom: 100 }}
         renderItem={({ item }) => (
           <TouchableOpacity 
             onPress={() => {
@@ -97,8 +105,8 @@ export default function PlaylistResultsScreen() {
               style={{ width: 56, height: 56, borderRadius: 4, marginRight: 12, backgroundColor: '#333' }} 
             />
             <View style={{ flex: 1 }}>
-              <Title numberOfLines={2} style={{ color: theme.colors.onSurface, fontSize: 15, marginBottom: 2 }}>{item.name || item.title}</Title>
-              <Subheading numberOfLines={1} style={{ color: theme.colors.onSurfaceVariant, fontSize: 13 }}>{`${item.songCount || item.song_count || item.trackCount || 0} songs`}</Subheading>
+              <Text variant="titleLarge" numberOfLines={2} style={{ color: theme.colors.onSurface, fontSize: 15, marginBottom: 2 }}>{item.name || item.title}</Text>
+              <Text variant="titleMedium" numberOfLines={1} style={{ color: theme.colors.onSurfaceVariant, fontSize: 13 }}>{`${item.songCount || item.song_count || item.trackCount || 0} songs`}</Text>
             </View>
           </TouchableOpacity>
         )}
@@ -106,3 +114,18 @@ export default function PlaylistResultsScreen() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  headerWrapper: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+  },
+});

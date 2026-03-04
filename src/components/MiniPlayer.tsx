@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { View, TouchableOpacity, StyleSheet } from 'react-native';
-import { Text, IconButton, Card } from 'react-native-paper';
-import { Ionicons } from '@expo/vector-icons';
+import React from "react";
+import { View, Pressable, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text, Card } from "react-native-paper";
+import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
+import Svg, { Circle } from 'react-native-svg';
 
 interface MiniPlayerProps {
   isPlaying: boolean;
@@ -30,34 +31,108 @@ const MiniPlayer: React.FC<MiniPlayerProps> = ({
   duration = 100
 }) => {
   const { theme } = useTheme();
-  const progress = duration > 0 ? position / duration : 0;
+  const ui = theme.ui;
+  const controls = ui.controls;
+  const progress = duration > 0 ? (position / duration) * 100 : 0;
+  
+  // Circular progress parameters
+  const size = ui.sizes.miniPlayerProgress;
+  const strokeWidth = controls.PROGRESS_BAR.mini;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (progress / 100) * circumference;
 
   return (
-    <Card style={[styles.container, { backgroundColor: theme.colors.surface }]}>
-      <TouchableOpacity onPress={onOpenFullPlayer} style={styles.content}>
-        {/* Progress Bar */}
-        <View style={[styles.progressBar, { backgroundColor: theme.colors.primary }]} />
-        
+    <View
+      style={[
+        styles.container,
+        {
+          marginHorizontal: ui.spacing.sm,
+          borderRadius: ui.radius.pill,
+          elevation: ui.shadow.miniPlayer.elevation,
+          shadowColor: ui.shadow.miniPlayer.color,
+          shadowOpacity: ui.shadow.miniPlayer.opacity,
+          shadowRadius: ui.shadow.miniPlayer.radius,
+          height: ui.sizes.miniPlayerHeight,
+        },
+      ]}
+    >
+      {/* Background */}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.primary, borderRadius: ui.radius.lg }]} />
+
+      <Pressable
+        onPress={onOpenFullPlayer}
+        style={[styles.content, { paddingHorizontal: ui.spacing.sm, paddingVertical: ui.spacing.sm }]}
+        accessibilityRole="button"
+        accessibilityLabel="Open full player"
+        accessible
+      >
         <View style={styles.mainContent}>
-          {/* Album Cover */}
-          <Card.Cover
-            source={{ uri: currentSong.cover }}
-            style={[styles.cover, { backgroundColor: theme.colors.surfaceVariant }]}
-          />
+          {/* Album Cover with circular progress */}
+          <View style={[styles.albumArtContainer, { width: size, height: size }]}>
+            <Svg width={size} height={size} style={styles.progressCircle}>
+              <Circle
+                cx={size / 2}
+                cy={size / 2}
+                r={radius}
+                stroke={ui.alpha.onPrimary30}
+                strokeWidth={strokeWidth}
+                fill="none"
+              />
+              <Circle
+                cx={size / 2}
+                cy={size / 2}
+                r={radius}
+                stroke={theme.colors.onPrimary}
+                strokeWidth={strokeWidth}
+                fill="none"
+                strokeDasharray={circumference}
+                strokeDashoffset={strokeDashoffset}
+                strokeLinecap="round"
+                transform={`rotate(-90 ${size / 2} ${size / 2})`}
+              />
+            </Svg>
+            <Card.Cover
+              source={{ uri: currentSong.cover }}
+              style={[
+                styles.cover,
+                {
+                  width: ui.sizes.miniPlayerCover,
+                  height: ui.sizes.miniPlayerCover,
+                  borderRadius: ui.sizes.miniPlayerCover / 2,
+                  backgroundColor: ui.alpha.onPrimary20,
+                },
+              ]}
+            />
+          </View>
           
           {/* Song Info */}
-          <View style={styles.songInfo}>
+          <View style={[styles.songInfo, { marginLeft: ui.spacing.sm }]}>
             <Text 
               variant="labelMedium" 
               numberOfLines={1} 
-              style={[styles.title, { color: theme.colors.onSurface }]}
+              style={[
+                styles.title,
+                {
+                  color: theme.colors.onPrimary,
+                  fontSize: ui.typography.miniTitle.fontSize,
+                  fontWeight: ui.typography.miniTitle.fontWeight,
+                },
+              ]}
             >
               {currentSong.title}
             </Text>
             <Text 
               variant="bodySmall" 
               numberOfLines={1} 
-              style={[styles.artist, { color: theme.colors.onSurfaceVariant }]}
+              style={[
+                styles.artist,
+                {
+                  marginTop: ui.spacing.xxs,
+                  color: ui.alpha.onPrimary80,
+                  fontSize: ui.typography.miniSubtitle.fontSize,
+                },
+              ]}
             >
               {currentSong.artist}
             </Text>
@@ -65,70 +140,74 @@ const MiniPlayer: React.FC<MiniPlayerProps> = ({
           
           {/* Controls */}
           <View style={styles.controls}>
-            <IconButton
-              icon="skip-previous"
-              size={24}
-              onPress={onPrevious}
-              iconColor={theme.colors.onSurface}
-            />
-            <IconButton
-              icon={isPlaying ? "pause-circle" : "play-circle"}
-              size={32}
-              onPress={onPlayPause}
-              iconColor={theme.colors.primary}
-            />
-            <IconButton
-              icon="skip-next"
-              size={24}
-              onPress={onNext}
-              iconColor={theme.colors.onSurface}
-            />
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation();
+                onPlayPause();
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons
+                name={isPlaying ? "pause" : "play-arrow"}
+                size={32}
+                color={theme.colors.onPrimary}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation();
+                onNext();
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={{ marginLeft: ui.spacing.sm }}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons
+                name="skip-next"
+                size={28}
+                color={theme.colors.onPrimary}
+              />
+            </TouchableOpacity>
           </View>
         </View>
-      </TouchableOpacity>
-    </Card>
+      </Pressable>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    margin: 16,
-    marginBottom: 80, // Extra space for tab bar
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-  },
-  progressBar: {
-    height: 2,
-    width: '100%',
-    position: 'absolute',
-    top: 0,
-    left: 0,
+    shadowOffset: { width: 0, height: 4 },
+    overflow: 'hidden',
   },
   content: {
-    padding: 8,
+    flex: 1,
   },
   mainContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
+  },
+  albumArtContainer: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  progressCircle: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
   },
   cover: {
-    width: 48,
-    height: 48,
-    borderRadius: 4,
   },
   songInfo: {
     flex: 1,
-    marginLeft: 12,
     justifyContent: 'center',
   },
   title: {
-    fontWeight: '600',
   },
   artist: {
-    marginTop: 2,
   },
   controls: {
     flexDirection: 'row',

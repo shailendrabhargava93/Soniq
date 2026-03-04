@@ -1,10 +1,14 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import type { ReactNode } from 'react';
+import { View, StyleSheet } from 'react-native';
 import type { Track } from '../types/api';
 import FullPlayer from '../components/FullPlayer';
+import MiniPlayer from '../components/MiniPlayer';
 import UpNextDrawer from '../components/UpNextDrawer';
 import { audioService } from '../services/audio';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useTheme } from './ThemeContext';
+import { getMeta, setMeta } from '../services/storageCompat';
 
 type RepeatMode = 'off' | 'one' | 'all';
 
@@ -15,6 +19,8 @@ type PlayerContextValue = {
   track: Track | null;
   currentSong: Track | null;
   isPlaying: boolean;
+  position: number;
+  duration: number;
   playSong: (song?: Track) => void;
   pauseSong: () => void;
   nextSong: () => void;
@@ -22,6 +28,7 @@ type PlayerContextValue = {
   queue: Track[];
   addToQueue: (song: Track, atNext?: boolean) => void;
   removeFromQueue: (idx: number) => void;
+  clearQueue: () => void;
   playNext: (song: Track) => void;
   shuffle: boolean;
   toggleShuffle: () => void;
@@ -34,10 +41,13 @@ type PlayerContextValue = {
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
+  const { updateDynamicColors } = useTheme();
   const [visible, setVisible] = useState(false);
   const [track, setTrack] = useState<Track | null>(null);
   const [currentSong, setCurrentSong] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [position, setPosition] = useState<number>(0);
+  const [duration, setDuration] = useState<number>(0);
   const [queue, setQueue] = useState<Track[]>([]);
   const [queueIndex, setQueueIndex] = useState<number>(-1);
   const [shuffle, setShuffle] = useState<boolean>(false);
@@ -46,6 +56,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const isMounted = useRef(true);
 
   const STORAGE_KEY = 'player:state.v1';
+
+  // Update dynamic theme colors when current song changes
+  useEffect(() => {
+    if (currentSong?.artwork) {
+      updateDynamicColors(currentSong.artwork);
+    } else {
+      updateDynamicColors(null);
+    }
+  }, [currentSong?.artwork, updateDynamicColors]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -66,6 +85,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // subscribe to audio status updates
     audioService.setStatusUpdate((status: any) => {
       setIsPlaying(!!status?.isPlaying);
+      if (typeof status?.positionMillis === 'number') {
+        setPosition(Math.floor(status.positionMillis / 1000));
+      }
+      if (typeof status?.durationMillis === 'number') {
+        setDuration(Math.floor(status.durationMillis / 1000));
+      }
       // when playback finishes, advance
       if (status?.didJustFinish) {
         handleTrackEnd();
@@ -110,6 +135,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (setAsCurrent) setCurrentSong(song);
   };
 
+  const addToRecentlyPlayed = async (song: Track) => {
+    const MAX_RECENT = 50;
+    try {
+      const raw = await getMeta('recentlyPlayed');
+      let recent: Track[] = Array.isArray(raw) ? raw : [];
+      const entry: Track = { ...song, playedAt: Date.now() };
+      // Remove duplicate if exists
+      recent = recent.filter((s) => s.id !== entry.id);
+      // Add to beginning
+      recent.unshift(entry);
+      // Limit to max
+      if (recent.length > MAX_RECENT) recent = recent.slice(0, MAX_RECENT);
+      // Save through storageCompat to use consistent key
+      await setMeta('recentlyPlayed', recent);
+    } catch (e) {
+      console.warn('Failed to save recently played', e);
+    }
+  };
+
   const playSong = async (song?: Track) => {
     try {
       if (song) {
@@ -118,11 +162,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         ensureSongInQueue(song, true);
         await audioService.load(song.uri || '');
         await audioService.play();
+        // Track in recently played
+        await addToRecentlyPlayed(song);
       } else if (queueIndex >= 0 && queue[queueIndex]) {
         const s = queue[queueIndex];
         setCurrentSong(s);
         await audioService.load(s.uri || '');
         await audioService.play();
+        // Track in recently played
+        await addToRecentlyPlayed(s);
       } else if (currentSong) {
         await audioService.play();
       }
@@ -143,6 +191,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     try {
       await audioService.load(s.uri || '');
       await audioService.play();
+      await addToRecentlyPlayed(s);
     } catch (e) { console.warn('playIndex failed', e); }
   };
 
@@ -173,15 +222,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   };
 
   const nextSong = async () => {
+    if (queue.length === 0) return;
     if (shuffle) {
       const idx = Math.floor(Math.random() * queue.length);
       await playIndex(idx);
       return;
     }
-    await playIndex(queueIndex + 1);
+    const nextIdx = queueIndex + 1;
+    if (nextIdx >= queue.length) {
+      // If repeat all, go to first; otherwise stay at current
+      if (repeatMode === 'all') {
+        await playIndex(0);
+      }
+    } else {
+      await playIndex(nextIdx);
+    }
   };
 
   const previousSong = async () => {
+    if (queue.length === 0) return;
     // if within 5s, go previous; otherwise restart
     try {
       const status: any = (audioService as any).status || null;
@@ -191,7 +250,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         return;
       }
     } catch (e) {}
-    await playIndex(Math.max(0, queueIndex - 1));
+    const prevIdx = queueIndex - 1;
+    if (prevIdx < 0) {
+      // Wrap to last song if repeat all
+      if (repeatMode === 'all') {
+        await playIndex(queue.length - 1);
+      } else {
+        await playIndex(0); // Restart current song
+      }
+    } else {
+      await playIndex(prevIdx);
+    }
   };
 
   const addToQueue = (song: Track, atNext = false) => {
@@ -223,6 +292,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const clearQueue = () => {
+    setQueue([]);
+    setQueueIndex(-1);
+  };
+
   const toggleShuffle = () => setShuffle((s) => !s);
   const toggleQueue = () => setShowQueue((v) => !v);
 
@@ -234,6 +308,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       track,
       currentSong,
       isPlaying,
+      position,
+      duration,
       playSong,
       pauseSong,
       nextSong,
@@ -241,6 +317,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       queue,
       addToQueue,
       removeFromQueue,
+      clearQueue,
       playNext,
       shuffle,
       toggleShuffle,
@@ -250,11 +327,40 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       toggleQueue
     }}>
       {children}
+      {currentSong && !visible && (
+        <View style={styles.miniPlayerContainer}>
+          <MiniPlayer
+            isPlaying={isPlaying}
+            position={position}
+            duration={duration}
+            onPlayPause={() => isPlaying ? pauseSong() : playSong(currentSong)}
+            onNext={nextSong}
+            onPrevious={previousSong}
+            onOpenFullPlayer={() => currentSong && open(currentSong)}
+            currentSong={{
+              title: currentSong.title || 'Unknown',
+              artist: currentSong.artist || 'Unknown Artist',
+              cover: currentSong.artwork || ''
+            }}
+          />
+        </View>
+      )}
       <FullPlayer visible={visible} onClose={close} track={track} />
       <UpNextDrawer visible={showQueue} onClose={() => setShowQueue(false)} />
     </PlayerContext.Provider>
   );
 }
+
+const styles = StyleSheet.create({
+  miniPlayerContainer: {
+    position: 'absolute',
+    bottom: 86,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    elevation: 20,
+  }
+});
 
 export function usePlayer() {
   const ctx = useContext(PlayerContext);
