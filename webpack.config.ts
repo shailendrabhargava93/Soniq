@@ -13,6 +13,8 @@ module.exports = async function (env: any, argv: any) {
     // Redirect all react-native-vector-icons imports to @expo/vector-icons
     'react-native-vector-icons/MaterialCommunityIcons': '@expo/vector-icons/MaterialIcons',
     'react-native-vector-icons/MaterialIcons': '@expo/vector-icons/MaterialIcons',
+    // Stub out RNTP on web — it uses native modules unavailable in the browser
+    'react-native-track-player': path.resolve(__dirname, 'src/mocks/react-native-track-player.web.js'),
   };
 
   // Ignore problematic modules for web

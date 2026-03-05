@@ -1,11 +1,23 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import type { ReactNode } from 'react';
 import { View, StyleSheet } from 'react-native';
 import type { Track } from '../types/api';
 import FullPlayer from '../components/FullPlayer';
 import MiniPlayer from '../components/MiniPlayer';
 import UpNextDrawer from '../components/UpNextDrawer';
-import { audioService } from '../services/audio';
+import {
+  setupTrackPlayer,
+  setFullQueue,
+  play,
+  pause,
+  stop,
+  seekTo,
+  skipToIndex,
+  syncRepeatMode,
+  type RNTPTrack,
+} from '../services/audio';
+import { useTrackPlayerEvents, Event, State } from '../hooks/useTrackPlayerBridge';
+import { useAudioProgress } from '../hooks/useAudioProgress';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from './ThemeContext';
 import { getMeta, setMeta } from '../services/storageCompat';
@@ -36,6 +48,7 @@ type PlayerContextValue = {
   setRepeatMode: (m: RepeatMode) => void;
   showQueue: boolean;
   toggleQueue: () => void;
+  recentlyPlayed: Track[];
 };
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
@@ -46,14 +59,31 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [track, setTrack] = useState<Track | null>(null);
   const [currentSong, setCurrentSong] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [position, setPosition] = useState<number>(0);
-  const [duration, setDuration] = useState<number>(0);
   const [queue, setQueue] = useState<Track[]>([]);
   const [queueIndex, setQueueIndex] = useState<number>(-1);
   const [shuffle, setShuffle] = useState<boolean>(false);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
   const [showQueue, setShowQueue] = useState(false);
+  const [recentlyPlayed, setRecentlyPlayed] = useState<Track[]>([]);
   const isMounted = useRef(true);
+
+  // Refs to avoid stale closures in RNTP event handlers
+  const queueRef = useRef(queue);
+  const queueIndexRef = useRef(queueIndex);
+  const shuffleRef = useRef(shuffle);
+  const repeatModeRef = useRef(repeatMode);
+  useEffect(() => { queueRef.current = queue; }, [queue]);
+  useEffect(() => { queueIndexRef.current = queueIndex; }, [queueIndex]);
+  useEffect(() => { shuffleRef.current = shuffle; }, [shuffle]);
+  useEffect(() => { repeatModeRef.current = repeatMode; }, [repeatMode]);
+
+  // RNTP progress (position/duration in seconds)
+  const { position, duration } = useAudioProgress(200);
+
+  // Forward refs — assigned after functions are defined so event handlers always invoke latest version
+  const handleTrackEndRef = useRef<() => void>(() => {});
+  const nextSongRef = useRef<() => void>(() => {});
+  const previousSongRef = useRef<() => void>(() => {});
 
   const STORAGE_KEY = 'player:state.v1';
 
@@ -68,6 +98,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     isMounted.current = true;
+
+    // Initialise TrackPlayer once
+    setupTrackPlayer();
+
     (async () => {
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
@@ -82,23 +116,82 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
     })();
 
-    // subscribe to audio status updates
-    audioService.setStatusUpdate((status: any) => {
-      setIsPlaying(!!status?.isPlaying);
-      if (typeof status?.positionMillis === 'number') {
-        setPosition(Math.floor(status.positionMillis / 1000));
+    (async () => {
+      try {
+        const recent = await getMeta('recentlyPlayed');
+        if (Array.isArray(recent)) {
+          setRecentlyPlayed(recent);
+        }
+      } catch (e) {
+        console.warn('Failed to load recently played', e);
       }
-      if (typeof status?.durationMillis === 'number') {
-        setDuration(Math.floor(status.durationMillis / 1000));
-      }
-      // when playback finishes, advance
-      if (status?.didJustFinish) {
-        handleTrackEnd();
-      }
-    });
+    })();
 
     return () => { isMounted.current = false; };
   }, []);
+
+  // Sync playback state and handle remote controls from notification / lock screen
+  useTrackPlayerEvents(
+    [
+      Event.PlaybackState,
+      Event.PlaybackQueueEnded,
+      Event.RemotePlay,
+      Event.RemotePause,
+      Event.RemoteStop,
+      Event.RemoteNext,
+      Event.RemotePrevious,
+      Event.RemoteSeek,
+      Event.PlaybackActiveTrackChanged,
+    ],
+    async (event) => {
+      switch (event.type) {
+        case Event.PlaybackState:
+          setIsPlaying(event.state === State.Playing);
+          break;
+
+        case Event.PlaybackQueueEnded:
+          // Current track finished — advance via app queue logic
+          handleTrackEndRef.current();
+          break;
+
+        case Event.RemotePlay:
+          await play();
+          break;
+
+        case Event.RemotePause:
+          await pause();
+          break;
+
+        case Event.RemoteStop:
+          await stop();
+          setIsPlaying(false);
+          break;
+
+        case Event.RemoteNext:
+          nextSongRef.current();
+          break;
+
+        case Event.RemotePrevious:
+          previousSongRef.current();
+          break;
+
+        case Event.RemoteSeek:
+          await seekTo((event as any).position);
+          break;
+
+        case Event.PlaybackActiveTrackChanged: {
+          // Fired when RNTP internally changes track (e.g. from notification skip)
+          // We load one track at a time so this fires after our own skips — no action needed.
+          break;
+        }
+      }
+    }
+  );
+
+  // Sync repeat mode to RNTP so notification respects it
+  useEffect(() => {
+    syncRepeatMode(repeatMode).catch(() => {});
+  }, [repeatMode]);
 
   useEffect(() => {
     // persist minimal state
@@ -111,7 +204,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
     })();
   }, [queue, queueIndex, currentSong]);
-
   const open = (t: Track) => {
     setTrack(t);
     setVisible(true);
@@ -137,42 +229,57 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const addToRecentlyPlayed = async (song: Track) => {
     const MAX_RECENT = 50;
-    try {
-      const raw = await getMeta('recentlyPlayed');
-      let recent: Track[] = Array.isArray(raw) ? raw : [];
-      const entry: Track = { ...song, playedAt: Date.now() };
+    const entry: Track = { ...song, playedAt: Date.now() };
+    
+    setRecentlyPlayed((prev) => {
+      let recent = [...prev];
       // Remove duplicate if exists
       recent = recent.filter((s) => s.id !== entry.id);
       // Add to beginning
       recent.unshift(entry);
       // Limit to max
       if (recent.length > MAX_RECENT) recent = recent.slice(0, MAX_RECENT);
-      // Save through storageCompat to use consistent key
-      await setMeta('recentlyPlayed', recent);
-    } catch (e) {
-      console.warn('Failed to save recently played', e);
-    }
+      
+      // Update storage
+      setMeta('recentlyPlayed', recent).catch(e => console.warn('Failed to save recently played', e));
+      
+      return recent;
+    });
   };
+
+  // Map our Track[] to RNTP format
+  const toRNTPTrack = (t: Track): RNTPTrack => ({
+    id: t.id,
+    url: t.uri || '',
+    title: t.title,
+    artist: t.artist || 'Unknown Artist',
+    artwork: t.artwork || t.image,
+  });
 
   const playSong = async (song?: Track) => {
     try {
-      if (song) {
-        // play specific track and set index
+      if (song && song.id !== currentSong?.id) {
+        // New song — load and play from the start
         setCurrentSong(song);
         ensureSongInQueue(song, true);
-        await audioService.load(song.uri || '');
-        await audioService.play();
-        // Track in recently played
+        const rnTrack = toRNTPTrack(song);
+        await setFullQueue([rnTrack], 0);
+        await play();
+        setIsPlaying(true);
         await addToRecentlyPlayed(song);
-      } else if (queueIndex >= 0 && queue[queueIndex]) {
+      } else if (!song && queueIndex >= 0 && queue[queueIndex] && queue[queueIndex].id !== currentSong?.id) {
+        // Different queue song — load and play
         const s = queue[queueIndex];
         setCurrentSong(s);
-        await audioService.load(s.uri || '');
-        await audioService.play();
-        // Track in recently played
+        const rnTrack = toRNTPTrack(s);
+        await setFullQueue([rnTrack], 0);
+        await play();
+        setIsPlaying(true);
         await addToRecentlyPlayed(s);
-      } else if (currentSong) {
-        await audioService.play();
+      } else {
+        // Same song already loaded — just resume
+        await play();
+        setIsPlaying(true);
       }
     } catch (e) {
       console.warn('playSong failed', e);
@@ -180,7 +287,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   };
 
   const pauseSong = async () => {
-    try { await audioService.pause(); } catch (e) { console.warn(e); }
+    try {
+      await pause();
+      setIsPlaying(false);
+    } catch (e) { console.warn(e); }
   };
 
   const playIndex = async (idx: number) => {
@@ -189,18 +299,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const s = queue[idx];
     setCurrentSong(s);
     try {
-      await audioService.load(s.uri || '');
-      await audioService.play();
+      const rnTrack = toRNTPTrack(s);
+      await setFullQueue([rnTrack], 0);
+      await play();
+      setIsPlaying(true);
       await addToRecentlyPlayed(s);
     } catch (e) { console.warn('playIndex failed', e); }
   };
 
   const handleTrackEnd = async () => {
     if (repeatMode === 'one') {
-      // replay current
       if (currentSong) {
-        await audioService.setPosition(0);
-        await audioService.play();
+        await seekTo(0);
+        await play();
       }
       return;
     }
@@ -217,7 +328,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } else {
       // no next, stop
       setIsPlaying(false);
-      try { await audioService.unload(); } catch (e) {}
+      try { await stop(); } catch (e) {}
     }
   };
 
@@ -243,10 +354,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (queue.length === 0) return;
     // if within 5s, go previous; otherwise restart
     try {
-      const status: any = (audioService as any).status || null;
-      const pos = status?.positionMillis || 0;
+      const pos = position * 1000; // position is in seconds from useProgress
       if (pos > 5000) {
-        await audioService.setPosition(0);
+        await seekTo(0);
         return;
       }
     } catch (e) {}
@@ -262,6 +372,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       await playIndex(prevIdx);
     }
   };
+
+  // Keep forward refs up-to-date on every render so the RNTP event handler always calls latest versions
+  handleTrackEndRef.current = handleTrackEnd;
+  nextSongRef.current = nextSong;
+  previousSongRef.current = previousSong;
 
   const addToQueue = (song: Track, atNext = false) => {
     setQueue((q) => {
@@ -324,7 +439,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       repeatMode,
       setRepeatMode,
       showQueue,
-      toggleQueue
+      toggleQueue,
+      recentlyPlayed
     }}>
       {children}
       {currentSong && !visible && (
@@ -333,7 +449,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             isPlaying={isPlaying}
             position={position}
             duration={duration}
-            onPlayPause={() => isPlaying ? pauseSong() : playSong(currentSong)}
+            onPlayPause={() => isPlaying ? pauseSong() : playSong()}
             onNext={nextSong}
             onPrevious={previousSong}
             onOpenFullPlayer={() => currentSong && open(currentSong)}

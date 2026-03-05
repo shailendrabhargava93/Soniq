@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { View, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Alert, Image } from "react-native";
 import { Text, Title, Subheading, Card, Avatar, useTheme } from "react-native-paper";
 import { useNavigation } from "@react-navigation/native";
@@ -211,13 +211,16 @@ const mapArtistList = (list: any[]) => (Array.isArray(list) ? list.map((item) =>
 
 const mapPromoList = (items: any[]) => {
   if (!Array.isArray(items)) return [];
-  return items.slice(0, 10).map((entry: any) => mapItemByType(entry, 'song'));
+  return items.slice(0, 10).map((entry: any) => {
+    const mapped = mapItemByType(entry, 'song');
+    return { ...mapped, type: 'song' };
+  });
 };
 
 export default function Home() {
   const nav = useNavigation<any>();
   const theme = useTheme();
-  const { playSong, open } = usePlayer();
+  const { playSong, open, recentlyPlayed } = usePlayer();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [newAlbums, setNewAlbums] = useState<any[]>([]);
@@ -229,7 +232,6 @@ export default function Home() {
   const [promo68Items, setPromo68Items] = useState<any[]>([]);
   const [promo185Title, setPromo185Title] = useState<string | null>(null);
   const [promo185Items, setPromo185Items] = useState<any[]>([]);
-  const [recentlyPlayed, setRecentlyPlayed] = useState<any[]>([]);
   const {
     items: topSongsIndia,
     allItems: topSongsIndiaAll,
@@ -310,17 +312,6 @@ export default function Home() {
       try {
         setLoading(true);
         await loadCachedLaunch();
-
-        // Load recently played songs
-        try {
-          const recent = await getMeta('recentlyPlayed');
-          if (Array.isArray(recent)) {
-            setRecentlyPlayed(recent.slice(0, 10));
-          }
-        } catch (e) {
-          console.warn('[Home] Failed to load recently played:', e);
-        }
-
         try {
           const payload = (await saavnApi.launch()) as any;
           if (!mounted) return;
@@ -684,11 +675,11 @@ export default function Home() {
               <>
                 {renderSectionHeader('Recently Played', 'recently_played', true)}
                 <HorizontalScroller>
-                  {recentlyPlayed.map((item) => (
+                  {recentlyPlayed.slice(0, 10).map((item) => (
                     <TouchableOpacity
                       key={item.id}
-                      onPress={() => handleItemPress(item, item.type || 'song')}
-                      onLongPress={() => handleItemLongPress(item)}
+                      onPress={() => handleItemPress(item as any, 'song')}
+                      onLongPress={() => handleItemLongPress(item as any)}
                       accessibilityLabel={`Song: ${item.title} by ${item.artist}`}
                       accessibilityRole="button"
                     >
@@ -925,10 +916,10 @@ export default function Home() {
                 <>
                   {renderSectionHeader(promo68Title || 'Featured', 'promo_68', false)}
                   <HorizontalScroller>
-                    {promo68Items.map((item) => (
+                    {promo68Items.map((item: any) => (
                       <TouchableOpacity
                         key={item.id}
-                        onPress={() => handleItemPress(item, item.type || 'song', { section: 'promo_68', allItems: promo68Items })}
+                        onPress={() => handleItemPress(item, item.type, { section: 'promo_68', allItems: promo68Items })}
                         onLongPress={() => handleItemLongPress(item)}
                         accessibilityLabel={item.title}
                         accessibilityRole="button"
@@ -950,14 +941,14 @@ export default function Home() {
               )}
 
               {/* Promo Module 185 Section */}
-              {promo185Items.length > 0 && (
-                <>
-                  {renderSectionHeader(promo185Title || 'Featured', 'promo_185', false)}
-                  <HorizontalScroller>
-                    {promo185Items.map((item) => (
-                      <TouchableOpacity
-                        key={item.id}
-                        onPress={() => handleItemPress(item, item.type || 'song', { section: 'promo_185', allItems: promo185Items })}
+                {promo185Items.length > 0 && (
+                  <>
+                    {renderSectionHeader(promo185Title || 'Featured', 'promo_185', false)}
+                    <HorizontalScroller>
+                      {promo185Items.map((item: any) => (
+                        <TouchableOpacity
+                          key={item.id}
+                          onPress={() => handleItemPress(item, item.type, { section: 'promo_185', allItems: promo185Items })}
                         onLongPress={() => handleItemLongPress(item)}
                         accessibilityLabel={item.title}
                         accessibilityRole="button"
@@ -1051,8 +1042,8 @@ const styles = StyleSheet.create({
   albumImage: { width: HOME_CARD_SIZE, height: HOME_CARD_SIZE, borderRadius: 8, backgroundColor: '#ddd' },
   albumTitle: { marginTop: 2, fontSize: 13, fontWeight: '700' },
   albumArtist: { marginTop: 0, fontSize: 11, color: '#666' },
-  sectionTitle: { fontSize: 20, fontWeight: '700', marginBottom: 12 },
-  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+   sectionTitle: { fontSize: 20, fontWeight: '700', marginBottom: 0 },
+  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   seeAllButton: { flexDirection: 'row', alignItems: 'center' },
   chartRow: { flexDirection: 'row', alignItems: 'center' },
   chartImage: { width: 56, height: 56, borderRadius: 4, backgroundColor: '#ddd' },

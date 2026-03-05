@@ -359,8 +359,15 @@ const SearchScreen = () => {
   );
 
   const keyExtractor = useCallback((item: any, index: number) => `${item.type || item.category || 'item'}-${item.id || index}`, []);
+  const chipBorderColor = theme.colors.outlineVariant;
+  const inputChipRadius = 12;
+  const sharedOutlineBorder = {
+    borderWidth: 1,
+    borderColor: chipBorderColor,
+  } as const;
+
   const searchControls = (
-    <View style={{ paddingHorizontal: 16 }}>
+    <View>
       <Searchbar
         placeholder="Search for songs, artists, albums"
         onChangeText={handleQueryChange}
@@ -375,9 +382,12 @@ const SearchScreen = () => {
         style={{
           marginBottom: 16,
           backgroundColor: theme.colors.surface,
-          borderWidth: 1,
-          borderColor: theme.colors.outlineVariant,
+          ...sharedOutlineBorder,
           elevation: 0,
+          shadowOpacity: 0,
+          shadowRadius: 0,
+          shadowOffset: { width: 0, height: 0 },
+          borderRadius: inputChipRadius,
         }}
         placeholderTextColor={theme.colors.onSurfaceVariant}
         inputStyle={{ color: theme.colors.onSurface }}
@@ -385,7 +395,7 @@ const SearchScreen = () => {
       />
 
       {hasResults && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ paddingLeft: 0, paddingRight: 4 }}>
           {filters.map((filter) => (
             <Chip
               key={filter.key}
@@ -395,8 +405,9 @@ const SearchScreen = () => {
               style={{
                 marginRight: 8,
                 backgroundColor: selectedFilter === filter.key ? theme.colors.primaryContainer : theme.colors.surface,
-                borderColor: selectedFilter === filter.key ? theme.colors.primary : theme.colors.outlineVariant,
-                borderWidth: 1,
+                ...sharedOutlineBorder,
+                borderColor: selectedFilter === filter.key ? theme.colors.primary : chipBorderColor,
+                borderRadius: inputChipRadius,
               }}
               textStyle={{
                 color: selectedFilter === filter.key ? theme.colors.onPrimaryContainer : theme.colors.onSurface,
@@ -443,12 +454,12 @@ const SearchScreen = () => {
           maxToRenderPerBatch={8}
           windowSize={7}
           removeClippedSubviews
-          ListHeaderComponent={searchControls}
+          ListHeaderComponent={<View style={{ paddingBottom: 0 }}>{searchControls}</View>}
           contentContainerStyle={{ paddingTop: HEADER_HEIGHT + 16, paddingBottom: 100, paddingHorizontal: 16 }}
         />
       ) : (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: HEADER_HEIGHT + 16, paddingBottom: 100 }}>
-          {searchControls}
+          <View style={{ paddingHorizontal: 16 }}>{searchControls}</View>
           <View style={{ paddingHorizontal: 16, flex: 1 }}>
             {submittedQuery.trim().length === 0 ? (
             <>

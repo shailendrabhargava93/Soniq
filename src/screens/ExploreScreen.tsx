@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   StyleSheet,
-  FlatList,
   Image,
   Alert,
   Pressable,
@@ -189,6 +188,7 @@ export default function ExploreScreen() {
 
   const renderTile = (item: string) => (
     <ExploreTile
+      key={item}
       title={item}
       image={moodImages[item] || genreImages[item]}
       loading={loadingTerm === item}
@@ -207,6 +207,14 @@ export default function ExploreScreen() {
       }}
     />
   );
+
+  const chunk = <T,>(arr: T[], size: number): T[][] =>
+    Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
+      arr.slice(i * size, i * size + size)
+    );
+
+  const moodRows = useMemo(() => chunk(moods, columns), [columns]);
+  const genreRows = useMemo(() => chunk(genres, columns), [columns]);
 
   if (isListLoading) {
     return (
@@ -236,30 +244,30 @@ export default function ExploreScreen() {
       <View style={{ paddingHorizontal: theme.ui.spacing.lg }}>
         <Text variant="titleLarge" style={[styles.sectionTitle, { color: theme.colors.onSurface }]}>Moods</Text>
       </View>
-      <FlatList
-        data={moods}
-        keyExtractor={(i) => `mood-${i}`}
-        contentContainerStyle={styles.listTop}
-        scrollEnabled={false}
-        numColumns={columns}
-        key={columns}
-        columnWrapperStyle={columns > 1 ? styles.column : undefined}
-        renderItem={({ item }) => renderTile(item)}
-      />
+      <View style={styles.listTop}>
+        {moodRows.map((row, i) => (
+          <View key={i} style={[styles.column, { flexDirection: 'row' }]}>
+            {row.map((item) => renderTile(item))}
+            {Array.from({ length: columns - row.length }).map((_, k) => (
+              <View key={`spacer-${k}`} style={{ width: cardWidth }} />
+            ))}
+          </View>
+        ))}
+      </View>
 
       <View style={{ paddingHorizontal: theme.ui.spacing.lg, marginTop: theme.ui.spacing.md }}>
         <Text variant="titleLarge" style={[styles.sectionTitle, { color: theme.colors.onSurface }]}>Genres</Text>
       </View>
-      <FlatList
-        data={genres}
-        keyExtractor={(i) => `genre-${i}`}
-        contentContainerStyle={styles.list}
-        scrollEnabled={false}
-        numColumns={columns}
-        key={`genres-${columns}`}
-        columnWrapperStyle={columns > 1 ? styles.column : undefined}
-        renderItem={({ item }) => renderTile(item)}
-      />
+      <View style={styles.list}>
+        {genreRows.map((row, i) => (
+          <View key={i} style={[styles.column, { flexDirection: 'row' }]}>
+            {row.map((item) => renderTile(item))}
+            {Array.from({ length: columns - row.length }).map((_, k) => (
+              <View key={`spacer-${k}`} style={{ width: cardWidth }} />
+            ))}
+          </View>
+        ))}
+      </View>
     </ScreenWrapper>
   );
 }

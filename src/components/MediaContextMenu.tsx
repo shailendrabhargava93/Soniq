@@ -280,8 +280,22 @@ export default function MediaContextMenu({
 
   const handleShare = async () => {
     try {
+      let shareUri = item.uri;
+      if (type === 'song' && !shareUri) {
+        setIsLoading(true);
+        try {
+          const resp: any = await saavnApi.getSongById(item.id);
+          const songObj = resp?.data?.[0] || resp?.data || resp;
+          shareUri = getPlayableUrl(songObj) || shareUri;
+        } catch (e) {
+          console.warn('Failed to fetch song details for share', e);
+        } finally {
+          setIsLoading(false);
+        }
+      }
+
       const message = type === 'song'
-        ? `${title || 'Song'} - ${item.artist || ''}\n${item.uri || ''}`
+        ? `${title || 'Song'} - ${item.artist || ''}\n${shareUri || ''}`
         : type === 'artist'
           ? `Check out ${title}!`
           : `${title}${subtitle ? ` - ${subtitle}` : ''}`;
@@ -458,10 +472,12 @@ export default function MediaContextMenu({
             <View style={styles.modalBackdrop} />
           </TouchableWithoutFeedback>
           <View style={[styles.drawerContainer, { backgroundColor: theme.colors.surface }]}>
-            {isLoading && type !== 'song' ? (
+            {isLoading ? (
               <View style={{ padding: 16, alignItems: 'center' }}>
                 <ActivityIndicator color={theme.colors.primary} />
-                <Text style={{ marginTop: 8, color: theme.colors.onSurfaceVariant }}>Loading songs...</Text>
+                <Text style={{ marginTop: 8, color: theme.colors.onSurfaceVariant }}>
+                  {type === 'song' ? 'Loading info...' : 'Loading songs...'}
+                </Text>
               </View>
             ) : null}
             <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
@@ -516,6 +532,7 @@ export default function MediaContextMenu({
                       icon={({ size, color }) => <MaterialIcons name="share" size={size} color={color} />}
                       label="Share"
                       onPress={handleShare}
+                      disabled={isLoading}
                     />
                     <Drawer.Item
                       icon={({ size, color }) => <MaterialIcons name="person" size={size} color={color} />}

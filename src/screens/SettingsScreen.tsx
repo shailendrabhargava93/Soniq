@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { View, Alert, StyleSheet, ScrollView, TouchableOpacity, Share, Platform } from 'react-native';
-import { Text, Switch, Button, Card, RadioButton, Portal, Dialog } from 'react-native-paper';
+import { View, Alert, StyleSheet, ScrollView, TouchableOpacity, Share, Platform, Animated, Pressable } from 'react-native';
+import { Text, Button, Card, RadioButton, Portal, Dialog } from 'react-native-paper';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
@@ -9,6 +9,86 @@ import Header from '../components/Header';
 import packageJson from '../../package.json';
 
 const HEADER_HEIGHT = 60;
+
+type CustomSwitchProps = {
+  value: boolean;
+  onValueChange: (val: boolean) => void;
+};
+
+const CustomSwitch = memo(function CustomSwitch({ value, onValueChange }: CustomSwitchProps) {
+  const { theme } = useTheme();
+  const translateX = useMemo(() => new Animated.Value(value ? 23 : 3), []);
+
+  const prevValue = React.useRef(value);
+  React.useEffect(() => {
+    if (prevValue.current !== value) {
+      prevValue.current = value;
+      Animated.spring(translateX, {
+        toValue: value ? 23 : 3,
+        useNativeDriver: true,
+        bounciness: 4,
+      }).start();
+    }
+  }, [value, translateX]);
+
+  const trackColor = value ? theme.colors.primary : 'transparent';
+  const trackBorderColor = value ? 'transparent' : theme.colors.outline;
+  const thumbColor = value ? theme.colors.onPrimary : theme.colors.outline;
+  const thumbSize = value ? 24 : 18;
+  const checkColor = theme.colors.primary;
+
+  return (
+    <Pressable
+      onPress={() => onValueChange(!value)}
+      style={[
+        switchStyles.track,
+        { backgroundColor: trackColor, borderColor: trackBorderColor, borderWidth: 2 },
+      ]}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value }}
+    >
+      <Animated.View
+        style={[
+          switchStyles.thumb,
+          {
+            backgroundColor: thumbColor,
+            transform: [{ translateX }],
+            width: thumbSize,
+            height: thumbSize,
+            borderRadius: thumbSize / 2,
+            marginLeft: value ? 0 : 1,
+          },
+        ]}
+      >
+        {value && (
+          <MaterialIcons name="check" size={14} color={checkColor} />
+        )}
+      </Animated.View>
+    </Pressable>
+  );
+});
+
+const switchStyles = StyleSheet.create({
+  track: {
+    width: 52,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+  },
+  thumb: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+});
 
 const STREAM_QUALITIES = [
   { label: 'Low (128 kbps)', value: '128' },
@@ -201,19 +281,19 @@ export default function SettingsScreen() {
             icon="dark-mode" 
             label="Dark Theme" 
             colors={themeColors}
-            rightElement={<Switch value={isDark} onValueChange={toggleTheme} />}
+            rightElement={<CustomSwitch value={isDark} onValueChange={toggleTheme} />}
           />
           <SettingItem 
             icon="palette" 
             label="Dynamic theme" 
             colors={themeColors}
-            rightElement={<Switch value={dynamicThemeEnabled} onValueChange={setDynamicThemeEnabled} />}
+            rightElement={<CustomSwitch value={dynamicThemeEnabled} onValueChange={setDynamicThemeEnabled} />}
           />
           <SettingItem 
             icon="label" 
             label="Toggle Labels" 
             colors={themeColors}
-            rightElement={<Switch value={showBottomNavLabels} onValueChange={setShowBottomNavLabels} />}
+            rightElement={<CustomSwitch value={showBottomNavLabels} onValueChange={setShowBottomNavLabels} />}
             isLast
           />
         </Card>
