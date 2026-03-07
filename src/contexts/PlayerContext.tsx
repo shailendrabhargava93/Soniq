@@ -10,9 +10,8 @@ import {
   setFullQueue,
   play,
   pause,
-  stop,
   seekTo,
-  skipToIndex,
+  getActiveIndex,
   syncRepeatMode,
   type RNTPTrack,
 } from '../services/audio';
@@ -66,26 +65,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [showQueue, setShowQueue] = useState(false);
   const [recentlyPlayed, setRecentlyPlayed] = useState<Track[]>([]);
   const isMounted = useRef(true);
-
-  // Refs to avoid stale closures in RNTP event handlers
-  const queueRef = useRef(queue);
-  const queueIndexRef = useRef(queueIndex);
-  const shuffleRef = useRef(shuffle);
-  const repeatModeRef = useRef(repeatMode);
-  useEffect(() => { queueRef.current = queue; }, [queue]);
-  useEffect(() => { queueIndexRef.current = queueIndex; }, [queueIndex]);
-  useEffect(() => { shuffleRef.current = shuffle; }, [shuffle]);
-  useEffect(() => { repeatModeRef.current = repeatMode; }, [repeatMode]);
+  const transportBusy = useRef(false);
 
   // RNTP progress (position/duration in seconds)
   const { position, duration } = useAudioProgress(200);
 
-  // Forward refs — assigned after functions are defined so event handlers always invoke latest version
-  const handleTrackEndRef = useRef<() => void>(() => {});
-  const nextSongRef = useRef<() => void>(() => {});
-  const previousSongRef = useRef<() => void>(() => {});
-
   const STORAGE_KEY = 'player:state.v1';
+
+  const withTransportLock = useCallback(async (fn: () => Promise<void>) => {
+    if (transportBusy.current) return;
+    transportBusy.current = true;
+    try {
+      await fn();
+    } finally {
+      transportBusy.current = false;
+    }
+  }, []);
 
   // Update dynamic theme colors when current song changes
   useEffect(() => {
@@ -100,7 +95,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     isMounted.current = true;
 
     // Initialise TrackPlayer once
-    setupTrackPlayer();
+    (async () => {
+      try {
+        await setupTrackPlayer();
+      } catch (e) {
+        console.warn('TrackPlayer setup failed', e);
+      }
+    })();
 
     (async () => {
       try {
@@ -135,12 +136,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [
       Event.PlaybackState,
       Event.PlaybackQueueEnded,
-      Event.RemotePlay,
-      Event.RemotePause,
-      Event.RemoteStop,
-      Event.RemoteNext,
-      Event.RemotePrevious,
-      Event.RemoteSeek,
       Event.PlaybackActiveTrackChanged,
     ],
     async (event) => {
@@ -150,38 +145,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           break;
 
         case Event.PlaybackQueueEnded:
-          // Current track finished — advance via app queue logic
-          handleTrackEndRef.current();
-          break;
-
-        case Event.RemotePlay:
-          await play();
-          break;
-
-        case Event.RemotePause:
-          await pause();
-          break;
-
-        case Event.RemoteStop:
-          await stop();
+          // Queue ended in RNTP (repeat off)
           setIsPlaying(false);
           break;
 
-        case Event.RemoteNext:
-          nextSongRef.current();
-          break;
-
-        case Event.RemotePrevious:
-          previousSongRef.current();
-          break;
-
-        case Event.RemoteSeek:
-          await seekTo((event as any).position);
-          break;
-
         case Event.PlaybackActiveTrackChanged: {
-          // Fired when RNTP internally changes track (e.g. from notification skip)
-          // We load one track at a time so this fires after our own skips — no action needed.
+          const idx =
+            typeof (event as any).index === 'number'
+              ? (event as any).index
+              : typeof (event as any).track === 'number'
+                ? (event as any).track
+                : null;
+
+          if (idx !== null && idx >= 0 && idx < queue.length) {
+            const activeSong = queue[idx];
+            setQueueIndex(idx);
+            setCurrentSong(activeSong);
+            await addToRecentlyPlayed(activeSong);
+          }
           break;
         }
       }
@@ -254,82 +235,72 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     title: t.title,
     artist: t.artist || 'Unknown Artist',
     artwork: t.artwork || t.image,
+    duration: typeof (t as any).duration === 'number' ? (t as any).duration : undefined,
   });
 
+  const playFromQueueAtIndex = async (queueSnapshot: Track[], idx: number) => {
+    if (idx < 0 || idx >= queueSnapshot.length) return;
+    const song = queueSnapshot[idx];
+    const rnTracks = queueSnapshot.map(toRNTPTrack);
+    await setFullQueue(rnTracks, idx);
+    await play();
+    setQueueIndex(idx);
+    setCurrentSong(song);
+    setIsPlaying(true);
+    await addToRecentlyPlayed(song);
+  };
+
   const playSong = async (song?: Track) => {
-    try {
-      if (song && song.id !== currentSong?.id) {
-        // New song — load and play from the start
-        setCurrentSong(song);
-        ensureSongInQueue(song, true);
-        const rnTrack = toRNTPTrack(song);
-        await setFullQueue([rnTrack], 0);
-        await play();
-        setIsPlaying(true);
-        await addToRecentlyPlayed(song);
-      } else if (!song && queueIndex >= 0 && queue[queueIndex] && queue[queueIndex].id !== currentSong?.id) {
-        // Different queue song — load and play
-        const s = queue[queueIndex];
-        setCurrentSong(s);
-        const rnTrack = toRNTPTrack(s);
-        await setFullQueue([rnTrack], 0);
-        await play();
-        setIsPlaying(true);
-        await addToRecentlyPlayed(s);
-      } else {
-        // Same song already loaded — just resume
-        await play();
-        setIsPlaying(true);
+    await withTransportLock(async () => {
+      try {
+        if (song) {
+          let idx = queue.findIndex((s) => s.id === song.id);
+          let nextQueue = queue;
+
+          if (idx === -1) {
+            nextQueue = [...queue, song];
+            idx = nextQueue.length - 1;
+            setQueue(nextQueue);
+          }
+
+          await playFromQueueAtIndex(nextQueue, idx);
+        } else {
+          if (queueIndex >= 0 && queueIndex < queue.length) {
+            await playFromQueueAtIndex(queue, queueIndex);
+            return;
+          }
+
+          if (currentSong) {
+            const fallbackQueue = [currentSong];
+            setQueue(fallbackQueue);
+            await playFromQueueAtIndex(fallbackQueue, 0);
+            return;
+          }
+
+          await play();
+          setIsPlaying(true);
+        }
+      } catch (e) {
+        console.warn('playSong failed', e);
       }
-    } catch (e) {
-      console.warn('playSong failed', e);
-    }
+    });
   };
 
   const pauseSong = async () => {
-    try {
-      await pause();
-      setIsPlaying(false);
-    } catch (e) { console.warn(e); }
+    await withTransportLock(async () => {
+      try {
+        await pause();
+        setIsPlaying(false);
+      } catch (e) { console.warn(e); }
+    });
   };
 
   const playIndex = async (idx: number) => {
-    if (idx < 0 || idx >= queue.length) return;
-    setQueueIndex(idx);
-    const s = queue[idx];
-    setCurrentSong(s);
-    try {
-      const rnTrack = toRNTPTrack(s);
-      await setFullQueue([rnTrack], 0);
-      await play();
-      setIsPlaying(true);
-      await addToRecentlyPlayed(s);
-    } catch (e) { console.warn('playIndex failed', e); }
-  };
-
-  const handleTrackEnd = async () => {
-    if (repeatMode === 'one') {
-      if (currentSong) {
-        await seekTo(0);
-        await play();
-      }
-      return;
-    }
-
-    let nextIdx = queueIndex + 1;
-    if (shuffle) {
-      nextIdx = Math.floor(Math.random() * queue.length);
-    }
-
-    if (nextIdx >= 0 && nextIdx < queue.length) {
-      await playIndex(nextIdx);
-    } else if (repeatMode === 'all' && queue.length > 0) {
-      await playIndex(0);
-    } else {
-      // no next, stop
-      setIsPlaying(false);
-      try { await stop(); } catch (e) {}
-    }
+    await withTransportLock(async () => {
+      try {
+        await playFromQueueAtIndex(queue, idx);
+      } catch (e) { console.warn('playIndex failed', e); }
+    });
   };
 
   const nextSong = async () => {
@@ -373,10 +344,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Keep forward refs up-to-date on every render so the RNTP event handler always calls latest versions
-  handleTrackEndRef.current = handleTrackEnd;
-  nextSongRef.current = nextSong;
-  previousSongRef.current = previousSong;
+  useEffect(() => {
+    if (queue.length === 0) return;
+
+    (async () => {
+      try {
+        const active = await getActiveIndex();
+        const targetIndex =
+          typeof active === 'number' && active >= 0 && active < queue.length
+            ? active
+            : Math.max(0, Math.min(queueIndex, queue.length - 1));
+        await setFullQueue(queue.map(toRNTPTrack), targetIndex);
+      } catch (e) {
+        console.warn('Failed to sync RNTP queue', e);
+      }
+    })();
+  }, [queue, queueIndex]);
 
   const addToQueue = (song: Track, atNext = false) => {
     setQueue((q) => {
