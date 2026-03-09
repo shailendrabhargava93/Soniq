@@ -139,13 +139,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       Event.PlaybackActiveTrackChanged,
     ],
     async (event) => {
+      console.debug('[PlayerContext] TrackPlayer event:', event.type);
       switch (event.type) {
         case Event.PlaybackState:
-          setIsPlaying(event.state === State.Playing);
+          const isNowPlaying = event.state === State.Playing;
+          console.debug('[PlayerContext] PlaybackState changed to:', isNowPlaying ? 'PLAYING' : 'PAUSED');
+          setIsPlaying(isNowPlaying);
           break;
 
         case Event.PlaybackQueueEnded:
           // Queue ended in RNTP (repeat off)
+          console.debug('[PlayerContext] PlaybackQueueEnded event received');
           setIsPlaying(false);
           break;
 
@@ -157,8 +161,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                 ? (event as any).track
                 : null;
 
+          console.debug('[PlayerContext] PlaybackActiveTrackChanged - index:', idx, 'queue length:', queue.length);
           if (idx !== null && idx >= 0 && idx < queue.length) {
             const activeSong = queue[idx];
+            console.debug('[PlayerContext] Active track set to:', activeSong.title);
             setQueueIndex(idx);
             setCurrentSong(activeSong);
             await addToRecentlyPlayed(activeSong);
@@ -229,19 +235,32 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   };
 
   // Map our Track[] to RNTP format
-  const toRNTPTrack = (t: Track): RNTPTrack => ({
-    id: t.id,
-    url: t.uri || '',
-    title: t.title,
-    artist: t.artist || 'Unknown Artist',
-    artwork: t.artwork || t.image,
-    duration: typeof (t as any).duration === 'number' ? (t as any).duration : undefined,
-  });
+  const toRNTPTrack = (t: Track): RNTPTrack => {
+    // Ensure all required fields are present for notification display
+    const rnTrack: RNTPTrack = {
+      id: t.id || '',
+      url: t.uri || '',
+      title: t.title || 'Unknown Track',
+      artist: t.artist || 'Unknown Artist',
+      artwork: t.artwork || t.image,
+      duration: typeof (t as any).duration === 'number' ? (t as any).duration : undefined,
+    };
+    
+    // Warn if critical metadata is missing
+    if (!rnTrack.id) console.warn('[PlayerContext] Track missing ID:', t);
+    if (!rnTrack.url) console.warn('[PlayerContext] Track missing URI:', t);
+    
+    return rnTrack;
+  };
 
   const playFromQueueAtIndex = async (queueSnapshot: Track[], idx: number) => {
-    if (idx < 0 || idx >= queueSnapshot.length) return;
+    if (idx < 0 || idx >= queueSnapshot.length) {
+      console.warn('[PlayerContext] playFromQueueAtIndex: invalid index', idx, 'queue length:', queueSnapshot.length);
+      return;
+    }
     const song = queueSnapshot[idx];
     const rnTracks = queueSnapshot.map(toRNTPTrack);
+    console.debug('[PlayerContext] playFromQueueAtIndex:', idx, 'song:', song.title);
     await setFullQueue(rnTracks, idx);
     await play();
     setQueueIndex(idx);

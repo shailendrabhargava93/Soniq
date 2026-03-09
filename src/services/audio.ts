@@ -4,6 +4,7 @@ import TrackPlayer, {
   RepeatMode,
   State,
 } from 'react-native-track-player';
+import { Platform } from 'react-native';
 
 export type RNTPTrack = {
   id: string;
@@ -29,7 +30,10 @@ export async function setupTrackPlayer() {
       await TrackPlayer.setupPlayer({
         autoHandleInterruptions: true,
       });
+      
+      // Configure options for both notification and in-app controls
       await TrackPlayer.updateOptions({
+        // Basic capabilities for in-app controls
         capabilities: [
           Capability.Play,
           Capability.Pause,
@@ -38,6 +42,8 @@ export async function setupTrackPlayer() {
           Capability.SeekTo,
           Capability.Stop,
         ],
+        
+        // Notification panel capabilities (lock screen + notification drawer)
         notificationCapabilities: [
           Capability.Play,
           Capability.Pause,
@@ -46,15 +52,41 @@ export async function setupTrackPlayer() {
           Capability.SeekTo,
           Capability.Stop,
         ],
+        
+        // Compact capabilities for minimal notification display
         compactCapabilities: [
           Capability.Play,
           Capability.Pause,
           Capability.SkipToNext,
           Capability.SkipToPrevious,
         ],
+        
+        // Progress update frequency (affects responsiveness)
         progressUpdateEventInterval: 200,
+        
+        // Android-specific settings
+        ...(Platform.OS === 'android' && {
+          // Allow non-linear playback (enables skip to any track in queue)
+          requiresLinearPlayback: false,
+          // Show artwork in notification
+          alwaysPauseOnInterruption: true,
+        }),
+        
+        // iOS-specific settings
+        ...(Platform.OS === 'ios' && {
+          capabilities: [
+            Capability.Play,
+            Capability.Pause,
+            Capability.SkipToNext,
+            Capability.SkipToPrevious,
+            Capability.SeekTo,
+            Capability.Stop,
+          ],
+        }),
       });
+      
       isPlayerSetup = true;
+      console.debug('[TrackPlayer] Setup completed successfully');
     } catch (e: any) {
       // "The player has already been initialized" is expected on fast refresh.
       if (!e?.message?.includes('already')) {
@@ -72,16 +104,27 @@ export async function setupTrackPlayer() {
 /**
  * Set the full playback queue and jump to the desired index.
  * The notification will show the active track with prev/next controls.
+ * 
+ * Important: All tracks must have valid url, title, and ideally artwork
+ * for the notification to display correctly.
  */
 export async function setFullQueue(tracks: RNTPTrack[], startIndex: number) {
   await setupTrackPlayer();
   if (tracks.length === 0) return;
 
+  // Validate tracks have required metadata for notification display
+  const validTracks = tracks.map((track) => ({
+    ...track,
+    // Ensure title and artist are always set (required for notification)
+    title: track.title || 'Unknown Track',
+    artist: track.artist || 'Unknown Artist',
+  }));
+
   const existing = await TrackPlayer.getQueue();
   const sameQueue =
-    existing.length === tracks.length &&
+    existing.length === validTracks.length &&
     existing.every((item: any, i: number) => {
-      const next = tracks[i];
+      const next = validTracks[i];
       const existingId = String(item?.id ?? '');
       const nextId = String(next?.id ?? '');
       return existingId === nextId && (item?.url ?? '') === (next?.url ?? '');
@@ -89,13 +132,15 @@ export async function setFullQueue(tracks: RNTPTrack[], startIndex: number) {
 
   if (!sameQueue) {
     await TrackPlayer.reset();
-    await TrackPlayer.add(tracks);
+    await TrackPlayer.add(validTracks);
+    console.debug('[TrackPlayer] Queue updated with', validTracks.length, 'tracks');
   }
 
-  if (startIndex >= 0 && startIndex < tracks.length) {
+  if (startIndex >= 0 && startIndex < validTracks.length) {
     const activeIndex = await TrackPlayer.getActiveTrackIndex();
     if (activeIndex !== startIndex) {
       await TrackPlayer.skip(startIndex);
+      console.debug('[TrackPlayer] Skipped to index', startIndex);
     }
   }
 }
