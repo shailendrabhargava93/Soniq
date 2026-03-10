@@ -1,6 +1,5 @@
 import { fetchJson, withInflight } from '../utils/fetch';
 import { setLastFetchFailed } from './networkStatus';
-import type from "../types/api";
 import { getMeta, setMeta } from './storageCompat';
 
 const BASE_URL = 'https://saavn-api-client.vercel.app/api';

@@ -1,0 +1,32 @@
+diff --git a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt
+index b2409a0..42830d4 100644
+--- a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt
++++ b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt
+@@ -545,7 +545,10 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+         if (verifyServiceBoundOrReject(callback)) return@launch
+ 
+         if (index >= 0 && index < musicService.tracks.size) {
+-            callback.resolve(Arguments.fromBundle(musicService.tracks[index].originalItem))
++            val originalItem = musicService.tracks[index].originalItem
++            callback.resolve(
++                if (originalItem != null) Arguments.fromBundle(originalItem) else null
++            )
+         } else {
+             callback.resolve(null)
+         }
+@@ -582,11 +585,11 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+     @ReactMethod
+     fun getActiveTrack(callback: Promise) = scope.launch {
+         if (verifyServiceBoundOrReject(callback)) return@launch
+-        callback.resolve(
++        val currentTrack =
+             if (musicService.tracks.isEmpty()) null
+-            else Arguments.fromBundle(
+-                musicService.tracks[musicService.getCurrentTrackIndex()].originalItem
+-            )
++            else musicService.tracks[musicService.getCurrentTrackIndex()].originalItem
++        callback.resolve(
++            if (currentTrack != null) Arguments.fromBundle(currentTrack) else null
+         )
+     }
+ 

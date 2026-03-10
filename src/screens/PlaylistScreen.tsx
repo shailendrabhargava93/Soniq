@@ -62,7 +62,7 @@ const PlaylistScreen: React.FC<PlaylistScreenProps> = () => {
       artist: artistLabel,
       artwork,
       image: artwork,
-      uri: s.uri || '',
+      uri: s.uri || getPlayableUrl(s) || '',
       albumId: s.albumid || s.albumId || s.album?.id,
       album: decodeHtmlEntities(s.album?.name || s.album?.title || s.albumName || s.album || ''),
       albumArtwork,
@@ -121,7 +121,7 @@ const PlaylistScreen: React.FC<PlaylistScreenProps> = () => {
             artist: artistLabel,
             artwork,
             image: artwork,
-            uri: '',
+            uri: getPlayableUrl(s) || '',
             albumId: s.albumid || s.albumId || s.album?.id,
             album: decodeHtmlEntities(s.album?.name || s.album?.title || s.albumName || s.album || ''),
             albumArtwork,
@@ -158,8 +158,11 @@ const PlaylistScreen: React.FC<PlaylistScreenProps> = () => {
       } catch (e) { console.warn('play fetch failed', e); }
     }
     if (!s.uri) return Alert.alert('Playback error', 'No playable URL');
-    await player.playSong({ id: s.id, title: s.title, artist: s.artist, uri: s.uri, artwork: s.artwork });
-    player.open({ id: s.id, title: s.title, artist: s.artist, uri: s.uri, artwork: s.artwork });
+    const queue = songs
+      .filter((song) => !!song?.uri)
+      .map((song) => ({ id: song.id, title: song.title, artist: song.artist, uri: song.uri, artwork: song.artwork }));
+    await player.playQueue(queue as any, 0);
+    player.open(queue[0] as any);
   };
 
   const handleShufflePress = async () => {
@@ -176,19 +179,17 @@ const PlaylistScreen: React.FC<PlaylistScreenProps> = () => {
     }
     if (!first.uri) return Alert.alert('Playback error', 'No playable URL');
 
-    await player.playSong({ id: first.id, title: first.title, artist: first.artist, uri: first.uri, artwork: first.artwork });
-    player.open({ id: first.id, title: first.title, artist: first.artist, uri: first.uri, artwork: first.artwork });
-
-    for (let i = 1; i < shuffled.length; i++) {
-      const song = shuffled[i];
-      player.addToQueue({
+    const shuffledQueue = shuffled
+      .filter((song) => !!song?.uri)
+      .map((song) => ({
         id: song.id,
         title: song.title,
         artist: song.artist,
-        uri: song.uri || '',
+        uri: song.uri,
         artwork: song.artwork || song.image,
-      } as any);
-    }
+      }));
+    await player.playQueue(shuffledQueue as any, 0);
+    player.open(shuffledQueue[0] as any);
   };
 
   const handleLikePress = () => {
@@ -214,8 +215,24 @@ const PlaylistScreen: React.FC<PlaylistScreenProps> = () => {
       } catch (e) { console.warn(e); }
     }
     if (!item.uri) return Alert.alert('Playback error', 'No playable URL');
-    await player.playSong({ id: item.id, title: item.title, artist: item.artist, uri: item.uri, artwork: item.artwork });
-    player.open({ id: item.id, title: item.title, artist: item.artist, uri: item.uri, artwork: item.artwork });
+    const selectedId = String(item.id);
+    const queue = songs
+      .filter((song) => !!song?.uri)
+      .map((song) => ({
+        id: String(song.id),
+        title: song.title,
+        artist: song.artist,
+        uri: song.uri,
+        artwork: song.artwork || song.image,
+      }));
+    const startIndex = Math.max(0, queue.findIndex((song) => song.id === selectedId));
+    if (queue.length === 0) {
+      await player.playSong({ id: item.id, title: item.title, artist: item.artist, uri: item.uri, artwork: item.artwork });
+      player.open({ id: item.id, title: item.title, artist: item.artist, uri: item.uri, artwork: item.artwork });
+      return;
+    }
+    await player.playQueue(queue as any, startIndex);
+    player.open(queue[startIndex] as any);
   };
 
   if (loading && songs.length === 0) {

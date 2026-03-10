@@ -1,17 +1,17 @@
-import React, { useState, useRef } from "react";
+import React, { useRef } from "react";
 import { Modal, View, Text, Image, Pressable, TouchableOpacity, StyleSheet, PanResponder, Animated, useWindowDimensions, ScrollView } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import { usePlayer } from '../contexts/PlayerContext';
 import { useFavorites } from '../contexts/FavoritesContext';
-import { audioService } from '../services/audio';
-import UpNextDrawer from './UpNextDrawer';
+import { seekTo } from '../services/audio';
 import type { Track } from "../types/api";
 
 export default function FullPlayer({ visible, onClose, track }: { visible: boolean; onClose: () => void; track?: Track | null }) {
-  const [localShowQueue, setLocalShowQueue] = useState(false);
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const ui = theme.ui;
   const controls = ui.controls;
   const player = usePlayer();
@@ -54,7 +54,7 @@ export default function FullPlayer({ visible, onClose, track }: { visible: boole
 
   const onSeek = async (sec: number) => {
     try {
-      await audioService.setPosition(sec * 1000);
+      await seekTo(sec);
     } catch (e) {
       console.warn('[FullPlayer] seek failed', e);
     }
@@ -78,10 +78,16 @@ export default function FullPlayer({ visible, onClose, track }: { visible: boole
   };
 
   return (
-    <>
       <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
         <Animated.View
-          style={[styles.container, { transform: [{ translateY: pan }], backgroundColor: theme.colors.background, paddingTop: ui.spacing.xxxl }]}
+          style={[
+            styles.container,
+            {
+              transform: [{ translateY: pan }],
+              backgroundColor: theme.colors.background,
+              paddingTop: insets.top + ui.spacing.sm,
+            },
+          ]}
           {...panResponder.panHandlers}
         >
           <Pressable
@@ -127,7 +133,7 @@ export default function FullPlayer({ visible, onClose, track }: { visible: boole
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <TouchableOpacity
-                onPress={() => setLocalShowQueue(true)}
+                onPress={() => player.toggleQueue()}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <MaterialIcons name="queue-music" size={22} color={theme.colors.onSurface} />
@@ -141,6 +147,8 @@ export default function FullPlayer({ visible, onClose, track }: { visible: boole
               contentContainerStyle={[
                 styles.content,
                 {
+                  width: artSize,
+                  alignSelf: 'center',
                   paddingHorizontal: ui.spacing.xxxl,
                   paddingTop: ui.spacing.lg,
                   paddingBottom: ui.spacing.xxxl,
@@ -287,8 +295,6 @@ export default function FullPlayer({ visible, onClose, track }: { visible: boole
           )}
         </Animated.View>
       </Modal>
-      {visible && <UpNextDrawer visible={localShowQueue} onClose={() => setLocalShowQueue(false)} />}
-    </>
   );
 }
 

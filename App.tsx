@@ -20,13 +20,16 @@ export default function App() {
   useEffect(() => {
     // Load Roboto font for web
     if (Platform.OS === 'web') {
-      const link = document.createElement('link');
+      const doc = (globalThis as any).document;
+      if (!doc) return;
+
+      const link = doc.createElement('link');
       link.href = 'https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap';
       link.rel = 'stylesheet';
-      document.head.appendChild(link);
+      doc.head.appendChild(link);
       
       // Set default font family on body
-      document.body.style.fontFamily = 'Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif';
+      doc.body.style.fontFamily = 'Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif';
     }
   }, []);
 
@@ -101,7 +104,7 @@ export default function App() {
                         },
                       }
                     },
-                  }}
+                  } as any}
                 >
                   <AppNavigator />
                   <StatusBar style="auto" />

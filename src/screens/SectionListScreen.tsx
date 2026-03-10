@@ -3,6 +3,7 @@ import { View, StyleSheet, FlatList, TouchableOpacity, Animated, NativeScrollEve
 import { Text, Card } from "react-native-paper";
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import { usePlayer } from '../contexts/PlayerContext';
 import MediaRow from '../components/MediaRow';
@@ -18,6 +19,7 @@ const SectionListScreen: React.FC<SectionListScreenProps> = () => {
   const route = useRoute();
   const navigation = useNavigation();
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const player = usePlayer();
   const { type, title, data } = route.params as { type: string; title: string; data: any[] };
   const isTopSongsList = type === 'top_songs_india';
@@ -66,9 +68,8 @@ const SectionListScreen: React.FC<SectionListScreenProps> = () => {
       const track = await buildTrack(data[0]);
       if (!track) { Alert.alert('Playback error', 'No playable URL'); return; }
       const queue = (await Promise.all(data.map(buildTrack))).filter(Boolean) as any[];
-      await player.playSong(track);
-      player.open(track);
-      queue.slice(1).forEach((t) => player.addToQueue(t));
+      await player.playQueue(queue as any, 0);
+      player.open(queue[0] as any);
       return;
     }
     const firstItem = data[0];
@@ -86,9 +87,8 @@ const SectionListScreen: React.FC<SectionListScreenProps> = () => {
       const track = await buildTrack(shuffled[0]);
       if (!track) { Alert.alert('Playback error', 'No playable URL'); return; }
       const queue = (await Promise.all(shuffled.map(buildTrack))).filter(Boolean) as any[];
-      await player.playSong(track);
-      player.open(track);
-      queue.slice(1).forEach((t) => player.addToQueue(t));
+      await player.playQueue(queue as any, 0);
+      player.open(queue[0] as any);
       return;
     }
     const randomIndex = Math.floor(Math.random() * data.length);
@@ -127,8 +127,16 @@ const SectionListScreen: React.FC<SectionListScreenProps> = () => {
       artwork: getBestImage(item?.image || item?.saavnData?.image),
     };
 
-    await player.playSong(track as any);
-    player.open(track as any);
+    const queue = (await Promise.all(data.map(buildTrack))).filter(Boolean) as any[];
+    const startIndex = Math.max(0, queue.findIndex((entry) => String(entry.id) === String(track.id)));
+    if (queue.length === 0) {
+      await player.playSong(track as any);
+      player.open(track as any);
+      return;
+    }
+
+    await player.playQueue(queue as any, startIndex);
+    player.open(queue[startIndex] as any);
   };
 
   const renderItem = ({ item, index }: { item: any; index: number }) => (
@@ -196,7 +204,7 @@ const SectionListScreen: React.FC<SectionListScreenProps> = () => {
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       {/* Floating back button - always visible */}
       <TouchableOpacity 
-        style={[styles.floatingBackButton, { backgroundColor: theme.colors.surface }]}
+        style={[styles.floatingBackButton, { backgroundColor: theme.colors.surface, top: insets.top + 12 }]}
         onPress={() => navigation.goBack()}
       >
         <MaterialIcons name="arrow-back" size={24} color={theme.colors.onSurface} />
@@ -208,11 +216,12 @@ const SectionListScreen: React.FC<SectionListScreenProps> = () => {
           styles.headerWrapper, 
           { 
             backgroundColor: theme.colors.surface,
+            paddingTop: insets.top,
             opacity: headerOpacity,
             transform: [{
               translateY: headerOpacity.interpolate({
                 inputRange: [0, 1],
-                outputRange: [-HEADER_HEIGHT, 0],
+                outputRange: [-(HEADER_HEIGHT + insets.top), 0],
               })
             }]
           }

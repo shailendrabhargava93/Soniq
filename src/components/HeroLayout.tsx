@@ -3,6 +3,7 @@ import { View, StyleSheet, TouchableOpacity, FlatList, Animated, NativeScrollEve
 import { Text, Card } from 'react-native-paper';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 
 const HEADER_HEIGHT = 60;
@@ -53,6 +54,7 @@ const HeroLayout: React.FC<HeroLayoutProps> = ({
 }) => {
   const navigation = useNavigation();
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const [showHeader, setShowHeader] = useState(false);
   const headerOpacity = useRef(new Animated.Value(0)).current;
   const collageImages = (Array.isArray(coverImages) ? coverImages : [])
@@ -80,7 +82,7 @@ const HeroLayout: React.FC<HeroLayoutProps> = ({
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       {/* Floating back button - always visible */}
       <TouchableOpacity 
-        style={[styles.floatingBackButton, { backgroundColor: theme.colors.surface }]}
+        style={[styles.floatingBackButton, { backgroundColor: theme.colors.surface, top: insets.top + 12 }]}
         onPress={() => navigation.goBack()}
       >
         <MaterialIcons name="arrow-back" size={24} color={theme.colors.onSurface} />
@@ -92,11 +94,12 @@ const HeroLayout: React.FC<HeroLayoutProps> = ({
           styles.headerWrapper, 
           { 
             backgroundColor: theme.colors.surface,
+            paddingTop: insets.top,
             opacity: headerOpacity,
             transform: [{
               translateY: headerOpacity.interpolate({
                 inputRange: [0, 1],
-                outputRange: [-HEADER_HEIGHT, 0],
+                outputRange: [-(HEADER_HEIGHT + insets.top), 0],
               })
             }]
           }

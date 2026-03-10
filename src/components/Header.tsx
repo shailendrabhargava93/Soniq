@@ -20,6 +20,7 @@ export default function Header({ onRecentlyPlayedClick, onSettingsClick, title, 
   const { theme, isDark, toggleTheme } = useTheme();
   const fg = theme?.colors?.onSurface || '#000';
   const bg = theme?.colors?.surface || '#fff';
+  const hitSlop = { top: 10, bottom: 10, left: 10, right: 10 };
 
   return (
     <View style={[styles.container, { backgroundColor: bg }] }>
@@ -27,7 +28,7 @@ export default function Header({ onRecentlyPlayedClick, onSettingsClick, title, 
         <>
           <View style={styles.side}>
             {showBack ? (
-              <TouchableOpacity onPress={onBack} style={{ marginRight: 8 }} accessibilityRole="button" accessibilityLabel="Back">
+              <TouchableOpacity onPress={onBack} style={{ marginRight: 8 }} hitSlop={hitSlop} accessibilityRole="button" accessibilityLabel="Back">
                 <MaterialIcons name="arrow-back" size={22} color={fg} />
               </TouchableOpacity>
             ) : null}
@@ -39,17 +40,17 @@ export default function Header({ onRecentlyPlayedClick, onSettingsClick, title, 
 
           <View style={[styles.side, { alignItems: 'flex-end' }]}>
             {onRecentlyPlayedClick && (
-              <TouchableOpacity onPress={onRecentlyPlayedClick} style={styles.actionBtn} accessibilityRole="button" accessibilityLabel="Recently played">
+              <TouchableOpacity onPress={onRecentlyPlayedClick} style={styles.actionBtn} hitSlop={hitSlop} accessibilityRole="button" accessibilityLabel="Recently played">
                 <MaterialIcons name="access-time" size={22} color={fg} />
               </TouchableOpacity>
             )}
             {onSettingsClick && (
-              <TouchableOpacity onPress={onSettingsClick} style={styles.actionBtn} accessibilityRole="button" accessibilityLabel="Settings">
+              <TouchableOpacity onPress={onSettingsClick} style={styles.actionBtn} hitSlop={hitSlop} accessibilityRole="button" accessibilityLabel="Settings">
                 <MaterialIcons name="settings" size={22} color={fg} />
               </TouchableOpacity>
             )}
             {!hideThemeToggle && (
-              <TouchableOpacity onPress={toggleTheme} style={styles.actionBtn} accessibilityRole="button" accessibilityLabel={`Switch to ${isDark ? 'light' : 'dark'} theme`}>
+              <TouchableOpacity onPress={toggleTheme} style={styles.actionBtn} hitSlop={hitSlop} accessibilityRole="button" accessibilityLabel={`Switch to ${isDark ? 'light' : 'dark'} theme`}>
                 <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={22} color={fg} />
               </TouchableOpacity>
             )}
@@ -65,7 +66,7 @@ export default function Header({ onRecentlyPlayedClick, onSettingsClick, title, 
             ) : title ? (
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 {showBack ? (
-                  <TouchableOpacity onPress={onBack} style={{ marginRight: 8 }} accessibilityRole="button" accessibilityLabel="Back">
+                  <TouchableOpacity onPress={onBack} style={{ marginRight: 8 }} hitSlop={hitSlop} accessibilityRole="button" accessibilityLabel="Back">
                     <MaterialIcons name="arrow-back" size={22} color={fg} />
                   </TouchableOpacity>
                 ) : null}
@@ -80,19 +81,19 @@ export default function Header({ onRecentlyPlayedClick, onSettingsClick, title, 
           </View>
           <View style={styles.actions}>
             {onRecentlyPlayedClick && (
-              <TouchableOpacity onPress={onRecentlyPlayedClick} style={styles.actionBtn} accessibilityRole="button" accessibilityLabel="Recently played">
+              <TouchableOpacity onPress={onRecentlyPlayedClick} style={styles.actionBtn} hitSlop={hitSlop} accessibilityRole="button" accessibilityLabel="Recently played">
                 <MaterialIcons name="access-time" size={22} color={fg} />
               </TouchableOpacity>
             )}
             {onSettingsClick && (
-              <TouchableOpacity onPress={onSettingsClick} style={styles.actionBtn} accessibilityRole="button" accessibilityLabel="Settings">
+              <TouchableOpacity onPress={onSettingsClick} style={styles.actionBtn} hitSlop={hitSlop} accessibilityRole="button" accessibilityLabel="Settings">
                 <MaterialIcons name="settings" size={22} color={fg} />
               </TouchableOpacity>
             )}
 
             {/* Theme toggle button (optional) */}
             {!hideThemeToggle && (
-              <TouchableOpacity onPress={toggleTheme} style={styles.actionBtn} accessibilityRole="button" accessibilityLabel={`Switch to ${isDark ? 'light' : 'dark'} theme`}>
+              <TouchableOpacity onPress={toggleTheme} style={styles.actionBtn} hitSlop={hitSlop} accessibilityRole="button" accessibilityLabel={`Switch to ${isDark ? 'light' : 'dark'} theme`}>
                 <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={22} color={fg} />
               </TouchableOpacity>
             )}
@@ -148,6 +149,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   actionBtn: { 
-    padding: 6 
+    padding: 8 
   },
 });

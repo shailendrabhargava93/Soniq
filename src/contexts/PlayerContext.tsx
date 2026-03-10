@@ -33,6 +33,7 @@ type PlayerContextValue = {
   position: number;
   duration: number;
   playSong: (song?: Track) => void;
+  playQueue: (songs: Track[], startIndex?: number) => void;
   pauseSong: () => void;
   nextSong: () => void;
   previousSong: () => void;
@@ -65,21 +66,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [showQueue, setShowQueue] = useState(false);
   const [recentlyPlayed, setRecentlyPlayed] = useState<Track[]>([]);
   const isMounted = useRef(true);
-  const transportBusy = useRef(false);
+  const transportQueue = useRef<Promise<void>>(Promise.resolve());
 
   // RNTP progress (position/duration in seconds)
   const { position, duration } = useAudioProgress(200);
 
   const STORAGE_KEY = 'player:state.v1';
 
-  const withTransportLock = useCallback(async (fn: () => Promise<void>) => {
-    if (transportBusy.current) return;
-    transportBusy.current = true;
-    try {
-      await fn();
-    } finally {
-      transportBusy.current = false;
-    }
+  const enqueueTransport = useCallback((fn: () => Promise<void>) => {
+    transportQueue.current = transportQueue.current
+      .then(fn)
+      .catch((e) => {
+        console.warn('Player transport action failed', e);
+      });
+    return transportQueue.current;
   }, []);
 
   // Update dynamic theme colors when current song changes
@@ -270,7 +270,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   };
 
   const playSong = async (song?: Track) => {
-    await withTransportLock(async () => {
+    await enqueueTransport(async () => {
       try {
         if (song) {
           let idx = queue.findIndex((s) => s.id === song.id);
@@ -305,8 +305,30 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const playQueue = async (songs: Track[], startIndex = 0) => {
+    const normalized = songs
+      .filter((song) => !!song?.id && !!song?.uri)
+      .map((song) => ({
+        ...song,
+        id: String(song.id),
+      }));
+
+    if (normalized.length === 0) return;
+
+    const clampedIndex = Math.max(0, Math.min(startIndex, normalized.length - 1));
+
+    await enqueueTransport(async () => {
+      try {
+        setQueue(normalized);
+        await playFromQueueAtIndex(normalized, clampedIndex);
+      } catch (e) {
+        console.warn('playQueue failed', e);
+      }
+    });
+  };
+
   const pauseSong = async () => {
-    await withTransportLock(async () => {
+    await enqueueTransport(async () => {
       try {
         await pause();
         setIsPlaying(false);
@@ -315,7 +337,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   };
 
   const playIndex = async (idx: number) => {
-    await withTransportLock(async () => {
+    await enqueueTransport(async () => {
       try {
         await playFromQueueAtIndex(queue, idx);
       } catch (e) { console.warn('playIndex failed', e); }
@@ -378,7 +400,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         console.warn('Failed to sync RNTP queue', e);
       }
     })();
-  }, [queue, queueIndex]);
+  }, [queue]);
 
   const addToQueue = (song: Track, atNext = false) => {
     setQueue((q) => {
@@ -428,6 +450,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       position,
       duration,
       playSong,
+      playQueue,
       pauseSong,
       nextSong,
       previousSong,

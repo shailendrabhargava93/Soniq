@@ -3,6 +3,7 @@ import { View, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Alert, 
 import { Text, Title, Subheading, Card, Avatar, useTheme } from "react-native-paper";
 import { useNavigation } from "@react-navigation/native";
 import { MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Header from '../components/Header';
 import HorizontalScroller from '../components/HorizontalScroller';
 import SkeletonLoader from '../components/SkeletonLoader';
@@ -15,6 +16,7 @@ import { decodeHtmlEntities, getBestImage, getPlayableUrl } from '../utils/norma
 import type { Track } from '../types/api';
 
 const HOME_CARD_SIZE = 150;
+const HEADER_HEIGHT = 60;
 
 const pickImage = (img: any) => getBestImage(img);
 
@@ -217,9 +219,33 @@ const mapPromoList = (items: any[]) => {
   });
 };
 
+const findArtistRecoList = (input: any, depth = 0): any[] => {
+  if (!input || depth > 4) return [];
+  if (Array.isArray(input)) {
+    if (input.length > 0) return input;
+    return [];
+  }
+  if (typeof input !== 'object') return [];
+
+  const direct =
+    input.artist_recos ||
+    input.artistRecos ||
+    input.recommended_artists ||
+    input.recommendedArtists ||
+    input.artists;
+  if (Array.isArray(direct) && direct.length > 0) return direct;
+
+  for (const value of Object.values(input)) {
+    const found = findArtistRecoList(value, depth + 1);
+    if (found.length > 0) return found;
+  }
+  return [];
+};
+
 export default function Home() {
   const nav = useNavigation<any>();
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const { playSong, open, recentlyPlayed } = usePlayer();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -283,8 +309,8 @@ export default function Home() {
     // Section: Trending Playlists (from launch().data.top_playlists)
     setTrendingPlaylists(mapPlaylistList(data?.top_playlists || data?.topPlaylists));
     
-    // Section: Recommended Artists (from launch().data.artist_recos)
-    setRecommendedArtists(mapArtistList(data?.artist_recos || data?.artistRecos));
+    // Section: Recommended Artists (payload shape varies across launch variants)
+    setRecommendedArtists(mapArtistList(findArtistRecoList(data)));
 
     const promo68 = extractPromoModule(payload, 'promo:vx:data:68');
     setPromo68Title(promo68.title);
@@ -654,7 +680,7 @@ export default function Home() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       {/* Header */}
-      <View style={[styles.headerWrapper, { backgroundColor: theme.colors.surface }]}>
+      <View style={[styles.headerWrapper, { backgroundColor: theme.colors.surface, paddingTop: insets.top }]}>
         <Header 
           title="Home" 
           logo 
@@ -664,7 +690,7 @@ export default function Home() {
       </View>
       
       <ScrollView
-        contentContainerStyle={styles.contentContainer}
+        contentContainerStyle={[styles.contentContainer, { paddingTop: insets.top + HEADER_HEIGHT }]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }

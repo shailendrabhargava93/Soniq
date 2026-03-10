@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView, ScrollViewProps } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import Header, { HeaderProps } from './Header';
 
@@ -39,16 +40,18 @@ export default function ScreenWrapper({
   topContent,
 }: ScreenWrapperProps) {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const safeHeaderHeight = headerHeight + insets.top;
 
   const contentContainerStyle = [
-    { paddingTop: headerHeight + topPadding, paddingBottom: bottomPadding },
+    { paddingTop: safeHeaderHeight + topPadding, paddingBottom: bottomPadding },
     scrollViewProps?.contentContainerStyle,
   ];
 
   const renderContent = () => {
     if (noScroll) {
       return (
-        <View style={[styles.noScrollContent, { paddingTop: headerHeight + topPadding }]}>
+        <View style={[styles.noScrollContent, { paddingTop: safeHeaderHeight + topPadding }]}>
           {topContent}
           {children}
         </View>
@@ -72,7 +75,12 @@ export default function ScreenWrapper({
       {aboveHeader}
 
       {/* Fixed Header */}
-      <View style={[styles.headerWrapper, { backgroundColor: theme.colors.surface }]}>
+      <View
+        style={[
+          styles.headerWrapper,
+          { backgroundColor: theme.colors.surface, paddingTop: insets.top },
+        ]}
+      >
         {customHeader || <Header {...headerProps} />}
       </View>
 

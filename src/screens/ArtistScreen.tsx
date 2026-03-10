@@ -133,6 +133,19 @@ const ArtistScreen = function({ route, navigation }: ArtistScreenProps) {
     player.open(track);
   }, [buildTrackFromSong, player, resolveSong]);
 
+  const playTopSongsQueue = useCallback(async (startIndex: number) => {
+    if (topSongs.length === 0) return;
+    const resolvedSongs = await Promise.all(topSongs.map((song) => resolveSong(song.raw || song)));
+    const queue = resolvedSongs
+      .map((song) => buildTrackFromSong(song))
+      .filter((song) => !!song.uri);
+
+    if (queue.length === 0) return;
+    const clamped = Math.max(0, Math.min(startIndex, queue.length - 1));
+    await player.playQueue(queue as any, clamped);
+    player.open(queue[clamped] as any);
+  }, [buildTrackFromSong, player, resolveSong, topSongs]);
+
   const handleAlbumPress = useCallback(async (album: any) => {
     const albumId = album?.id || album?.albumid || album?.albumId || album?.sid;
     try {
@@ -283,20 +296,15 @@ const ArtistScreen = function({ route, navigation }: ArtistScreenProps) {
 
   const handlePlayPress = useCallback(async () => {
     if (topSongs.length > 0) {
-      await playSongResolved(topSongs[0]);
-      for (let i = 1; i < topSongs.length; i++) {
-        const resolved = await resolveSong(topSongs[i]);
-        const track: Track = buildTrackFromSong(resolved);
-        if (track.uri) player.addToQueue(track);
-      }
+      await playTopSongsQueue(0);
     }
-  }, [buildTrackFromSong, playSongResolved, player, resolveSong, topSongs]);
+  }, [playTopSongsQueue, topSongs.length]);
 
   const handleShufflePress = useCallback(async () => {
     if (topSongs.length === 0) return;
     const randomIndex = Math.floor(Math.random() * topSongs.length);
-    await playSongResolved(topSongs[randomIndex]);
-  }, [playSongResolved, topSongs]);
+    await playTopSongsQueue(randomIndex);
+  }, [playTopSongsQueue, topSongs]);
 
   const customHeroContent = useMemo(() => (
     <View style={styles.heroSection}>
@@ -386,7 +394,7 @@ const ArtistScreen = function({ route, navigation }: ArtistScreenProps) {
         <View style={styles.horizontalSectionContainer}>
           <HorizontalScroller gap={8}>
             {item.items.map((album: any) => (
-              <MusicCard key={album.id} item={album} type="albums" onPress={() => handleAlbumPress(album)} />
+              <MusicCard key={album.id} item={album} type="albums" noShadow onPress={() => handleAlbumPress(album)} />
             ))}
           </HorizontalScroller>
         </View>
@@ -398,7 +406,7 @@ const ArtistScreen = function({ route, navigation }: ArtistScreenProps) {
         <View style={styles.horizontalSectionContainer}>
           <HorizontalScroller gap={8}>
             {item.items.map((single: any) => (
-              <MusicCard key={single.id} item={single} type="songs" onPress={() => playSongResolved(single.raw || single)} />
+              <MusicCard key={single.id} item={single} type="songs" noShadow onPress={() => playSongResolved(single.raw || single)} />
             ))}
           </HorizontalScroller>
         </View>
@@ -416,8 +424,22 @@ const ArtistScreen = function({ route, navigation }: ArtistScreenProps) {
               artwork: item.artwork,
             }}
             type="song"
-            onPress={() => playSongResolved(item.raw || item)}
-            onPlayNow={() => playSongResolved(item.raw || item)}
+            onPress={() => {
+              const idx = topSongs.findIndex((song) => String(song.id) === String(item.id));
+              if (idx >= 0) {
+                void playTopSongsQueue(idx);
+                return;
+              }
+              void playSongResolved(item.raw || item);
+            }}
+            onPlayNow={() => {
+              const idx = topSongs.findIndex((song) => String(song.id) === String(item.id));
+              if (idx >= 0) {
+                void playTopSongsQueue(idx);
+                return;
+              }
+              void playSongResolved(item.raw || item);
+            }}
             onAddToQueue={async () => {
               const resolved = await resolveSong(item.raw || item);
               const track: Track = buildTrackFromSong(resolved);
@@ -434,7 +456,7 @@ const ArtistScreen = function({ route, navigation }: ArtistScreenProps) {
     }
     
     return null;
-  }, [buildTrackFromSong, handleAlbumPress, playSongResolved, player, resolveSong, theme.colors.onSurface]);
+  }, [buildTrackFromSong, handleAlbumPress, playSongResolved, playTopSongsQueue, player, resolveSong, theme.colors.onSurface, topSongs]);
 
   if (loading && !details) {
     return (

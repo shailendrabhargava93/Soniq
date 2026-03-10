@@ -217,6 +217,7 @@ export default function ExploreScreen() {
   const genreRows = useMemo(() => chunk(genres, columns), [columns]);
 
   if (isListLoading) {
+    const placeholderCount = Math.max(columns * 2, 6);
     return (
       <ScreenWrapper
         headerProps={{
@@ -228,7 +229,14 @@ export default function ExploreScreen() {
           <Text variant="titleLarge" style={[styles.sectionTitle, { color: theme.colors.onSurface }]}>Moods</Text>
         </View>
         <View style={styles.skeletonWrap}>
-          <SkeletonLoader type="grid" count={6} />
+          <SkeletonLoader type="grid" count={placeholderCount} />
+        </View>
+
+        <View style={{ paddingHorizontal: theme.ui.spacing.lg, marginTop: theme.ui.spacing.md }}>
+          <Text variant="titleLarge" style={[styles.sectionTitle, { color: theme.colors.onSurface }]}>Genres</Text>
+        </View>
+        <View style={styles.skeletonWrap}>
+          <SkeletonLoader type="grid" count={placeholderCount} />
         </View>
       </ScreenWrapper>
     );

@@ -6,9 +6,10 @@ interface MusicCardProps {
   item: any;
   type: 'songs' | 'albums' | 'playlists' | 'artists';
   onPress: () => void;
+  noShadow?: boolean;
 }
 
-export default function MusicCard({ item, type, onPress }: MusicCardProps) {
+export default function MusicCard({ item, type, onPress, noShadow = false }: MusicCardProps) {
   const { theme } = useTheme();
   const ui = theme.ui;
 
@@ -54,10 +55,15 @@ export default function MusicCard({ item, type, onPress }: MusicCardProps) {
             width: cardWidth,
             marginRight: ui.spacing.md,
             backgroundColor: theme.colors.surface,
-            elevation: ui.shadow.card.elevation,
-            shadowColor: ui.shadow.card.color,
-            shadowOpacity: ui.shadow.card.opacity,
-            shadowRadius: ui.shadow.card.radius,
+            borderRadius: noShadow ? 12 : ui.radius.md,
+            overflow: 'hidden',
+            borderWidth: 0,
+            borderColor: 'transparent',
+            elevation: noShadow ? 0 : ui.shadow.card.elevation,
+            shadowColor: noShadow ? 'transparent' : ui.shadow.card.color,
+            shadowOpacity: noShadow ? 0 : ui.shadow.card.opacity,
+            shadowRadius: noShadow ? 0 : ui.shadow.card.radius,
+            shadowOffset: noShadow ? { width: 0, height: 0 } : { width: 0, height: 2 },
           },
         ]}
       >
@@ -78,9 +84,11 @@ export default function MusicCard({ item, type, onPress }: MusicCardProps) {
             styles.content,
             {
               backgroundColor: theme.colors.surface,
-              padding: ui.spacing.sm,
-              borderBottomLeftRadius: ui.radius.md,
-              borderBottomRightRadius: ui.radius.md,
+              paddingHorizontal: noShadow ? 2 : ui.spacing.sm,
+              paddingTop: noShadow ? 8 : ui.spacing.sm,
+              paddingBottom: noShadow ? 2 : ui.spacing.sm,
+              borderBottomLeftRadius: noShadow ? 12 : ui.radius.md,
+              borderBottomRightRadius: noShadow ? 12 : ui.radius.md,
             },
           ]}
         >

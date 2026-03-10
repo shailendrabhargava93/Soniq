@@ -12,6 +12,7 @@ import MediaRow from '../components/MediaRow';
 import Header from '../components/Header';
 import { StyleSheet } from 'react-native';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type LibraryTab = 'songs' | 'playlists' | 'albums' | 'artists';
 
@@ -24,6 +25,7 @@ const TABS: Array<{ key: LibraryTab; label: string; icon: string }> = [
 
 const LibraryScreen = () => {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const player = usePlayer();
   const { hydrated, songs: favouriteSongs, albums: favouriteAlbums, playlists: favouritePlaylists, artists: favouriteArtists } = useFavorites();
@@ -132,9 +134,24 @@ const LibraryScreen = () => {
       uri: resolved.uri,
       artwork: resolved.artwork || resolved.image,
     };
-    await player.playSong(track as any);
-    player.open(track as any);
-  }, [player]);
+    const queue = favouriteSongs
+      .filter((fav) => !!fav?.uri)
+      .map((fav) => ({
+        id: String(fav.id),
+        title: fav.title || 'Unknown',
+        artist: fav.artist || '',
+        uri: fav.uri,
+        artwork: fav.artwork || fav.image,
+      }));
+    const idx = queue.findIndex((entry) => entry.id === String(track.id));
+    if (queue.length > 0 && idx >= 0) {
+      await player.playQueue(queue as any, idx);
+      player.open(queue[idx] as any);
+    } else {
+      await player.playSong(track as any);
+      player.open(track as any);
+    }
+  }, [favouriteSongs, player]);
 
   const handleOpenPlaylist = useCallback((playlist: any) => {
     if (!playlist) return;
@@ -289,11 +306,11 @@ const LibraryScreen = () => {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <View style={[styles.headerWrapper, { backgroundColor: theme.colors.surface }]}>
+      <View style={[styles.headerWrapper, { backgroundColor: theme.colors.surface, paddingTop: insets.top }]}>
         <Header title="Your Library" hideThemeToggle />
       </View>
 
-      <View style={[styles.tabsWrapper, { paddingTop: HEADER_HEIGHT + 16, backgroundColor: theme.colors.background }]}>
+      <View style={[styles.tabsWrapper, { paddingTop: insets.top + HEADER_HEIGHT + 16, backgroundColor: theme.colors.background }]}>
         <FlatList
           horizontal
           data={TABS}

@@ -6,6 +6,7 @@ import { saavnApi } from '../services/saavnApi';
 import { getBestImage, decodeHtmlEntities, getPlayableUrl } from '../utils/normalize';
 import { MaterialIcons } from '@expo/vector-icons';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import { usePlayer } from '../contexts/PlayerContext';
 import { getMeta, setMeta, deleteMeta } from '../services/storageCompat';
@@ -24,8 +25,9 @@ const filters = [
 
 const SearchScreen = () => {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
-  const { playSong, open, addToQueue, playNext } = usePlayer();
+  const { playSong, playQueue, open, addToQueue, playNext } = usePlayer();
   const [searchQuery, setSearchQuery] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any>({});
@@ -229,7 +231,7 @@ const SearchScreen = () => {
     return uri;
   }, []);
 
-  const playSearchSong = useCallback(async (item: any) => {
+  const playSearchSong = useCallback(async (item: any, sourceSongs?: any[]) => {
     try {
       const uri = await resolveSongUri(item);
       if (!uri) {
@@ -243,18 +245,41 @@ const SearchScreen = () => {
         uri,
         artwork: item.artwork || item.image
       };
-      await playSong(track);
-      open(track);
+
+      const source = Array.isArray(sourceSongs) && sourceSongs.length > 0 ? sourceSongs : [item];
+      const resolvedQueue = await Promise.all(
+        source.map(async (song: any) => {
+          const songUri = await resolveSongUri(song);
+          if (!songUri) return null;
+          return {
+            id: song.id,
+            title: song.title,
+            artist: song.artist || song.subtitle,
+            uri: songUri,
+            artwork: song.artwork || song.image,
+          };
+        })
+      );
+      const queue = resolvedQueue.filter(Boolean) as any[];
+      const startIndex = Math.max(0, queue.findIndex((song) => String(song.id) === String(track.id)));
+
+      if (queue.length > 0) {
+        await playQueue(queue as any, startIndex);
+        open(queue[startIndex] as any);
+      } else {
+        await playSong(track);
+        open(track);
+      }
     } catch (e) {
       console.error('Failed to play song', e);
       Alert.alert('Error', 'Failed to play song');
     }
-  }, [open, playSong, resolveSongUri]);
+  }, [open, playQueue, playSong, resolveSongUri]);
 
   const handleItemPress = useCallback(async (item: any) => {
     if (item.type === 'song' || (selectedFilter === 'all' && item.category === 'songs')) {
       try {
-        await playSearchSong(item);
+        await playSearchSong(item, searchResults?.songs);
       } catch (e) {
         console.error('Failed to play song', e);
         Alert.alert('Error', 'Failed to play song');
@@ -266,7 +291,7 @@ const SearchScreen = () => {
     } else if (item.type === 'artist' || (selectedFilter === 'all' && item.category === 'artists')) {
       (navigation as any).navigate('Artist', { id: item.id, artist: item });
     }
-  }, [navigation, playSearchSong, selectedFilter]);
+  }, [navigation, playSearchSong, searchResults?.songs, selectedFilter]);
 
   const filteredResults = useMemo(() => {
     if (selectedFilter === 'all') {
@@ -295,8 +320,8 @@ const SearchScreen = () => {
         <MediaRow
           item={item}
           type="song"
-          onPress={() => playSearchSong(item)}
-          onPlayNow={(s: any) => playSearchSong(s)}
+          onPress={() => playSearchSong(item, searchResults?.songs)}
+          onPlayNow={(s: any) => playSearchSong(s, searchResults?.songs)}
           onAddToQueue={(s: any) => addToQueue(s)}
           onPlayNext={(s: any) => playNext(s)}
           onGoToAlbum={(s: any) => {
@@ -350,7 +375,7 @@ const SearchScreen = () => {
     }
 
     return null;
-  }, [addToQueue, handleItemPress, navigation, playNext, playSearchSong, selectedFilter]);
+  }, [addToQueue, handleItemPress, navigation, playNext, playSearchSong, searchResults?.songs, selectedFilter]);
 
   const hasResults = useMemo(
     () => ['topQuery', 'songs', 'albums', 'playlists', 'artists']
@@ -360,11 +385,6 @@ const SearchScreen = () => {
 
   const keyExtractor = useCallback((item: any, index: number) => `${item.type || item.category || 'item'}-${item.id || index}`, []);
   const chipBorderColor = theme.colors.outlineVariant;
-  const inputChipRadius = 12;
-  const sharedOutlineBorder = {
-    borderWidth: 1,
-    borderColor: chipBorderColor,
-  } as const;
 
   const searchControls = (
     <View>
@@ -382,12 +402,13 @@ const SearchScreen = () => {
         style={{
           marginBottom: 16,
           backgroundColor: theme.colors.surface,
-          ...sharedOutlineBorder,
+          borderWidth: 1,
+          borderColor: chipBorderColor,
           elevation: 0,
           shadowOpacity: 0,
           shadowRadius: 0,
           shadowOffset: { width: 0, height: 0 },
-          borderRadius: inputChipRadius,
+          borderRadius: 12,
         }}
         placeholderTextColor={theme.colors.onSurfaceVariant}
         inputStyle={{ color: theme.colors.onSurface }}
@@ -395,24 +416,27 @@ const SearchScreen = () => {
       />
 
       {hasResults && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ paddingLeft: 0, paddingRight: 4 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={styles.tabsContent}>
           {filters.map((filter) => (
             <Chip
               key={filter.key}
               selected={selectedFilter === filter.key}
               onPress={() => setSelectedFilter(filter.key)}
               mode={selectedFilter === filter.key ? 'flat' : 'outlined'}
-              style={{
-                marginRight: 8,
-                backgroundColor: selectedFilter === filter.key ? theme.colors.primaryContainer : theme.colors.surface,
-                ...sharedOutlineBorder,
-                borderColor: selectedFilter === filter.key ? theme.colors.primary : chipBorderColor,
-                borderRadius: inputChipRadius,
-              }}
-              textStyle={{
-                color: selectedFilter === filter.key ? theme.colors.onPrimaryContainer : theme.colors.onSurface,
-                fontWeight: selectedFilter === filter.key ? '700' : '500',
-              }}
+              style={[
+                styles.tabChip,
+                {
+                  backgroundColor: selectedFilter === filter.key ? theme.colors.primaryContainer : theme.colors.surface,
+                  borderColor: selectedFilter === filter.key ? theme.colors.primary : chipBorderColor,
+                },
+              ]}
+              textStyle={[
+                styles.tabChipText,
+                {
+                  color: selectedFilter === filter.key ? theme.colors.onPrimaryContainer : theme.colors.onSurface,
+                  fontWeight: selectedFilter === filter.key ? '700' : '500',
+                },
+              ]}
               showSelectedOverlay
               icon={() =>
                 filter.key === 'artists' ? (
@@ -440,7 +464,7 @@ const SearchScreen = () => {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <View style={[styles.headerWrapper, { backgroundColor: theme.colors.surface }]}>
+      <View style={[styles.headerWrapper, { backgroundColor: theme.colors.surface, paddingTop: insets.top }]}>
         <Header title="Search" hideThemeToggle />
       </View>
 
@@ -455,10 +479,10 @@ const SearchScreen = () => {
           windowSize={7}
           removeClippedSubviews
           ListHeaderComponent={<View style={{ paddingBottom: 0 }}>{searchControls}</View>}
-          contentContainerStyle={{ paddingTop: HEADER_HEIGHT + 16, paddingBottom: 100, paddingHorizontal: 16 }}
+          contentContainerStyle={{ paddingTop: insets.top + HEADER_HEIGHT + 16, paddingBottom: 100, paddingHorizontal: 16 }}
         />
       ) : (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: HEADER_HEIGHT + 16, paddingBottom: 100 }}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: insets.top + HEADER_HEIGHT + 16, paddingBottom: 100 }}>
           <View style={{ paddingHorizontal: 16 }}>{searchControls}</View>
           <View style={{ paddingHorizontal: 16, flex: 1 }}>
             {submittedQuery.trim().length === 0 ? (
@@ -481,8 +505,9 @@ const SearchScreen = () => {
                       <Chip
                         key={`${search}-${index}`}
                         onPress={() => handleRecentSearchPress(search)}
-                        style={{ marginRight: 8 }}
-                        textStyle={{ color: theme.colors.onSurface }}
+                        mode="outlined"
+                        style={[styles.tabChip, { backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.outlineVariant }]}
+                        textStyle={[styles.tabChipText, { color: theme.colors.onSurface, fontWeight: '500' }]}
                       >
                         {search}
                       </Chip>
@@ -501,13 +526,9 @@ const SearchScreen = () => {
                 {topSearches.map((item, idx) => (
                   <Chip
                     key={`${item?.id || item?.text}-${idx}`}
-                    style={{
-                      marginRight: 8,
-                      marginBottom: 8,
-                    }}
-                    textStyle={{
-                      color: theme.colors.onSurface,
-                    }}
+                    mode="outlined"
+                    style={[styles.tabChip, { marginBottom: 8, backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.outlineVariant }]}
+                    textStyle={[styles.tabChipText, { color: theme.colors.onSurface, fontWeight: '500' }]}
                     onPress={() => handleTopSearchPress(item.text)}
                     avatar={item.image ? <Avatar.Image size={24} source={{ uri: item.image }} /> : undefined}
                   >
@@ -566,6 +587,17 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
+  },
+  tabsContent: {
+    paddingLeft: 0,
+    paddingRight: 4,
+  },
+  tabChip: {
+    marginRight: 8,
+    borderWidth: 1,
+  },
+  tabChipText: {
+    fontSize: 13,
   },
 });
 

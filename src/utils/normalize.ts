@@ -76,11 +76,19 @@ export const formatCountShort = (n?: number | string): string => {
 };
 
 export const getBestImage = (imgField: unknown): string => {
+  const normalizeImageUrl = (url: string): string => {
+    if (!url) return '';
+    return url
+      .replace('50x50', '500x500')
+      .replace('150x150', '500x500')
+      .replace('320x320', '500x500');
+  };
+
   if (!imgField) return '';
-  if (typeof imgField === 'string') return imgField;
+  if (typeof imgField === 'string') return normalizeImageUrl(imgField);
   if (Array.isArray(imgField) && (imgField as unknown[]).length > 0) {
     const arr = imgField as unknown[];
-    const prefer = ['500x500', '320x320', '150x150', '50x50'];
+    const prefer = ['1000x1000', '500x500', '320x320', '150x150', '50x50'];
     for (const q of prefer) {
       const found = arr.find((it) => {
         const r = it as Record<string, unknown> | null;
@@ -92,23 +100,23 @@ export const getBestImage = (imgField: unknown): string => {
       });
       if (found) {
         const f = found as Record<string, unknown>;
-        return (f['url'] as string) || (f['link'] as string) || '';
+        return normalizeImageUrl((f['url'] as string) || (f['link'] as string) || '');
       }
     }
     const first = arr.find((it) => (it as Record<string, unknown>)['url']);
     if (first) {
       const f = first as Record<string, unknown>;
-      return (f['url'] as string) || (f['link'] as string) || '';
+      return normalizeImageUrl((f['url'] as string) || (f['link'] as string) || '');
     }
     const fallback = arr[0] as Record<string, unknown> | string | undefined;
-    if (typeof fallback === 'string') return fallback;
-    if (fallback) return (fallback['url'] as string) || (fallback['link'] as string) || '';
+    if (typeof fallback === 'string') return normalizeImageUrl(fallback);
+    if (fallback) return normalizeImageUrl((fallback['url'] as string) || (fallback['link'] as string) || '');
     return '';
   }
   if (typeof imgField === 'object' && imgField !== null) {
     const obj = imgField as Record<string, unknown>;
-    if (typeof obj['url'] === 'string') return obj['url'] as string;
-    if (typeof obj['link'] === 'string') return obj['link'] as string;
+    if (typeof obj['url'] === 'string') return normalizeImageUrl(obj['url'] as string);
+    if (typeof obj['link'] === 'string') return normalizeImageUrl(obj['link'] as string);
     for (const key of ['images', 'image', 'thumbnail', 'cover']) {
       if (obj[key]) return getBestImage(obj[key]);
     }

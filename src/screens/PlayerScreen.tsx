@@ -7,6 +7,8 @@ import { useFavorites } from '../contexts/FavoritesContext';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { seekTo } from '../services/audio';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -14,10 +16,10 @@ const PlayerScreen = () => {
   const { theme } = useTheme();
   const navigation = useNavigation();
   const { width, height } = useWindowDimensions();
-  const { currentSong, isPlaying, playSong, pauseSong, nextSong, previousSong, shuffle, toggleShuffle, repeatMode, setRepeatMode, toggleQueue } = usePlayer();
+  const insets = useSafeAreaInsets();
+  const { currentSong, isPlaying, playSong, pauseSong, nextSong, previousSong, shuffle, toggleShuffle, repeatMode, setRepeatMode, toggleQueue, position, duration } = usePlayer();
   const { toggleSongFavorite, isSongFavorite } = useFavorites();
-  const [position, setPosition] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [pendingSeek, setPendingSeek] = useState<number | null>(null);
   const liked = currentSong?.id ? isSongFavorite(currentSong.id) : false;
 
   // Responsive sizing
@@ -37,8 +39,12 @@ const PlayerScreen = () => {
     return 'repeat';
   };
 
+  const safeDuration = Math.max(Number(duration) || 0, 1);
+  const effectivePosition = pendingSeek ?? (Number(position) || 0);
+  const sliderValue = Math.min(Math.max(effectivePosition, 0), safeDuration);
+
   return (
-    <View style={[styles.container, { backgroundColor: '#2C3E50' }]}>
+    <View style={[styles.container, { backgroundColor: '#2C3E50', paddingTop: Math.max(insets.top + 8, 40) }]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
@@ -57,7 +63,7 @@ const PlayerScreen = () => {
       </View>
 
       {/* Song Info */}
-      <View style={styles.songInfo}>
+      <View style={[styles.songInfo, { width: artworkSize, alignSelf: 'center' }]}>
         <TouchableOpacity
           style={styles.favoriteIcon}
           onPress={() => {
@@ -82,20 +88,29 @@ const PlayerScreen = () => {
       </View>
 
       {/* Progress Bar */}
-      <View style={styles.progressContainer}>
+      <View style={[styles.progressContainer, { width: artworkSize, alignSelf: 'center' }]}>
         <Slider
-          value={position}
-          onValueChange={setPosition}
+          value={sliderValue}
+          onSlidingStart={() => setPendingSeek(sliderValue)}
+          onValueChange={(val) => setPendingSeek(val)}
+          onSlidingComplete={async (val) => {
+            setPendingSeek(null);
+            try {
+              await seekTo(val);
+            } catch (e) {
+              console.warn('Seek failed', e);
+            }
+          }}
           minimumValue={0}
-          maximumValue={duration || 1}
+          maximumValue={safeDuration}
           minimumTrackTintColor="#1DB954"
           maximumTrackTintColor="#4A5568"
           thumbTintColor="#1DB954"
           style={styles.slider}
         />
         <View style={styles.timeContainer}>
-          <Text style={styles.timeText}>{formatTime(position)}</Text>
-          <Text style={styles.timeText}>{formatTime(duration)}</Text>
+          <Text style={styles.timeText}>{formatTime(sliderValue)}</Text>
+          <Text style={styles.timeText}>{formatTime(Number(duration) || 0)}</Text>
         </View>
       </View>
 
@@ -153,7 +168,6 @@ const PlayerScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 40,
     paddingHorizontal: SCREEN_WIDTH < 360 ? 16 : 20,
   },
   header: {
@@ -186,7 +200,7 @@ const styles = StyleSheet.create({
   },
   favoriteIcon: {
     position: 'absolute',
-    right: 20,
+    right: 0,
     top: 0,
   },
   songTitle: {
@@ -194,14 +208,14 @@ const styles = StyleSheet.create({
     fontSize: SCREEN_WIDTH < 360 ? 18 : 20,
     fontWeight: '600',
     textAlign: 'center',
-    paddingHorizontal: 40,
+    paddingHorizontal: 8,
   },
   artistName: {
     color: '#9CA3AF',
     fontSize: SCREEN_WIDTH < 360 ? 13 : 14,
     marginTop: 8,
     textAlign: 'center',
-    paddingHorizontal: 40,
+    paddingHorizontal: 8,
   },
   progressContainer: {
     marginBottom: SCREEN_WIDTH < 360 ? 16 : 20,
@@ -213,7 +227,7 @@ const styles = StyleSheet.create({
   timeContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 5,
+    paddingHorizontal: 0,
   },
   timeText: {
     color: '#9CA3AF',
